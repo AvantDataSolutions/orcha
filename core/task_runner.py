@@ -38,7 +38,7 @@ class ThreadHandler():
         while self.is_running:
             for task in self.tasks:
                 TaskRunner.process_task(task)
-            time.sleep(5)
+            time.sleep(15)
 
 
 class TaskRunner():
@@ -60,7 +60,7 @@ class TaskRunner():
         def _refresh_active(run: RunItem):
             while running_dict[run.run_idk]:
                 run.update_active()
-                time.sleep(15)
+                time.sleep(30)
 
         # We only want to run the last run if its queued. If we're backing up
         # runs then the user needs to manage how long runs are taking and how

@@ -36,7 +36,7 @@ class Scheduler:
 
     def _run(self):
         while self.is_running:
-            time.sleep(5)
+            time.sleep(10)
             if self.last_refresh < time.time() - self.task_refresh_interval:
                 self.last_refresh = time.time()
                 self.all_tasks = TaskItem.get_all()

@@ -10,7 +10,7 @@ from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSON as PG_JSON
 from sqlalchemy.engine.row import Row
 
-from orcha.utils.sqlalchemy import (get_latest_versions, postgres_build,
+from orcha.utils.sqlalchemy import (get, get_latest_versions, postgres_build,
                                     postgres_scaffold)
 
 from .credentials import *
@@ -262,7 +262,6 @@ class RunRecord(Base):
     __tablename__ = 'runs'
 
     run_idk = Column(String, primary_key=True)
-    version = Column(DateTime(timezone=False), primary_key=True)
     task_idf = Column(String)
     scheduled_time = Column(DateTime(timezone=False))
     start_time = Column(DateTime(timezone=False))
@@ -276,7 +275,6 @@ class RunRecord(Base):
 class RunItem():
     _task: TaskItem
     run_idk: str
-    version: dt
     task_idf: str
     scheduled_time: dt
     start_time: dt | None
@@ -305,13 +303,11 @@ class RunItem():
     @staticmethod
     def create(task: TaskItem, scheduled_time: dt) -> RunItem:
         run_idk = str(uuid4())
-        version = dt.utcnow()
         status = RunStatus.QUEUED
 
         item = RunItem(
             _task = task,
             run_idk = run_idk,
-            version = version,
             task_idf = task.task_idk,
             scheduled_time = scheduled_time,
             start_time = None,
@@ -327,11 +323,9 @@ class RunItem():
     @staticmethod
     def get_all(since: dt, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
         task_id, task = RunItem._task_id_populate(task_id, task)
-        data = get_latest_versions(
+        data = get(
             session = Session,
             table='orcha.runs',
-            key_columns=['run_idk'],
-            version_column='version',
             select_columns='*',
             match_pairs=[
                 ('task_idf', '=', task_id),
@@ -343,11 +337,9 @@ class RunItem():
     @staticmethod
     def get_all_queued(task_id: str) -> list[RunItem]:
         task_id, task = RunItem._task_id_populate(task_id, None)
-        data = get_latest_versions(
+        data = get(
             session = Session,
             table='orcha.runs',
-            key_columns=['run_idk'],
-            version_column='version',
             select_columns='*',
             match_pairs=[
                 ('task_idf', '=', task_id),
@@ -377,11 +369,9 @@ class RunItem():
 
     @staticmethod
     def get_by_id(run_id: str, task: TaskItem | None = None) -> RunItem | None:
-        data = get_latest_versions(
+        data = get(
             session = Session,
             table='orcha.runs',
-            key_columns=['run_idk'],
-            version_column='version',
             select_columns='*',
             match_pairs=[
                 ('run_idk', '=', run_id)
@@ -403,7 +393,6 @@ class RunItem():
         with Session.begin() as session:
             session.merge(RunRecord(
                 run_idk = self.run_idk,
-                version = self.version,
                 task_idf = self.task_idf,
                 scheduled_time = self.scheduled_time,
                 start_time = self.start_time,
@@ -427,7 +416,7 @@ class RunItem():
         self.end_time = end_time
         self.output = output
 
-        db_data = RunItem.get_by_id(self.run_idk)
+        db_data = RunItem.get_by_id(self.run_idk, task=self._task)
 
         needs_update = False
         if db_data is None:
@@ -441,11 +430,10 @@ class RunItem():
             needs_update = True
 
         if needs_update:
-            self.version = dt.utcnow()
             self._update_db()
 
     def set_running(self, output: dict | None = None):
-        db_item = RunItem.get_by_id(self.run_idk)
+        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.RUNNING:
                 # if it's already set, we don't
@@ -459,7 +447,7 @@ class RunItem():
         )
 
     def set_success(self, output: dict | None = None):
-        db_item = RunItem.get_by_id(self.run_idk)
+        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.SUCCESS:
                 # if it's already set, we don't
@@ -473,7 +461,7 @@ class RunItem():
         )
 
     def set_failed(self, output: dict | None = None):
-        db_item = RunItem.get_by_id(self.run_idk)
+        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # if it's already set, we don't

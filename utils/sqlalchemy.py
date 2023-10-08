@@ -94,6 +94,63 @@ def _sanitize_sql(input_str: str):
     return sanitized_str
 
 
+def get(
+        session, table, select_columns: list | Literal['*'],
+        match_pairs: list[tuple[str, str, str]] = [],
+        match_type: Literal['AND', 'OR'] = 'AND'
+    ) -> list[Row]:
+    """
+    Returns rows from a database table that match the specified criteria.
+
+    Args:
+        session: The SQLAlchemy session to use for the database connection.
+        table: The name of the database table to query; 'schema.table' format.
+        select_columns: A list of column names to include in the query results.
+        match_pairs: A list of tuples representing the column name and value to match.
+            Defaults to an empty list, which returns all rows in the table.
+        match_type: The type of join to use for the match_pairs. Must be 'AND' or 'OR'.
+            Defaults to 'AND'.
+
+    Returns:
+        A list of tuples representing the query results.
+    """
+    match_type = _sanitize_sql(match_type) # type: ignore - literal is a string
+    if isinstance(select_columns, list):
+        # If it's a list, make the appropriate string,
+        # otherwise we just leave it as '*'
+        select_columns = ', '.join([_sanitize_sql(c) for c in select_columns])  # type: ignore
+
+    # Just make sure nothing funny was passed through accidentally
+    table, schema = table.split('.')
+    table = _sanitize_sql(table)
+    schema = _sanitize_sql(schema)
+    match_pairs = [(col, compr, test) for col, compr, test in match_pairs]
+
+    # add an index column to match_pairs to handle duplicate keys
+    # e.g. where id=5 or id=6, without the index only the last 'id' would be used
+    mp_indexed = [(i, col, compr, test) for i, (col, compr, test) in enumerate(match_pairs)]
+    if len(match_pairs) == 0:
+        pairs_query = ''
+    else:
+        pairs_query = [f'{_sanitize_sql(k)} {compr} :{f"{i}_{k}"}' for i, k , compr, _ in mp_indexed]
+        pairs_query = f' {match_type} '.join(pairs_query)
+
+    q_str = f'''
+        SELECT {select_columns}
+        FROM {table}.{schema}
+        {f'WHERE {pairs_query}' if pairs_query else ''}
+    '''
+    with session.begin() as tx:
+        # only keep the first and last values of each key
+        mp_sql_params = {f'{i}_{k}': v for i, k, c, v in mp_indexed}
+        # print(sql(q_str).bindparams(**mp_sql_params).compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}
+        # ))
+        return tx.execute(sql(q_str).bindparams(**mp_sql_params)).all()
+
+
+
 def get_latest_versions(
         session, table, key_columns: list, version_column: str,
         select_columns: list | Literal['*'], match_pairs: list[tuple[str, str, str]] = [],
