@@ -1,0 +1,14 @@
+.vscode/*
+*.venv*/
+
+*.pyc
+
+data/
+
+.env
+docker-compose.override.yml
+
+o365_token*
+
+# Used to ignore specific test files, e.g. test notebooks
+*_ignore.*
