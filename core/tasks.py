@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime as dt, timedelta as td
+from datetime import datetime as dt
+from datetime import timedelta as td
 from typing import Callable
 from uuid import uuid4
 
 from croniter import croniter
 from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSON as PG_JSON
-from sqlalchemy.engine.row import Row
+from sqlalchemy.sql import text as sql
 
 from orcha.utils.sqlalchemy import (get, get_latest_versions, postgres_build,
                                     postgres_scaffold)
@@ -20,6 +21,7 @@ print('Loading dh:',__name__)
 CUR_SCHEMA = 'orcha'
 Base, engine, Session = postgres_scaffold(CUR_SCHEMA)
 
+_register_task_with_runner: Callable | None = None
 
 """
 ===================================================================
@@ -100,7 +102,8 @@ class TaskItem():
             cls, task_idk: str, name: str, description: str,
             cron_schedule: str, thread_group,
             task_function: Callable[[TaskItem | None, RunItem | None], None],
-            status: str = TaskStatus.ENABLED
+            status: str = TaskStatus.ENABLED,
+            register_with_runner: bool = True
         ):
         cls.task_function = task_function    # type: ignore
         """
@@ -129,9 +132,9 @@ class TaskItem():
         ):
             update_needed = True
 
-        if not update_needed and current_task is not None:
-            return current_task
-
+        # Create and register the task with the task runner
+        # before we check if it needs updating otherwise
+        # we'll not register the task
         task = TaskItem(
             task_idk=task_idk,
             version=version,
@@ -144,8 +147,17 @@ class TaskItem():
             notes=None
         )
 
-        task._update_db()
-        return task
+        if register_with_runner:
+            if _register_task_with_runner is None:
+                raise Exception('No task runner registered')
+            _register_task_with_runner(task)
+
+        if not update_needed and current_task is not None:
+            task.version = current_task.version
+            return task
+        else:
+            task._update_db()
+            return task
 
 
     def _update_db(self) -> None:
@@ -161,7 +173,6 @@ class TaskItem():
                 status = self.status,
                 notes = self.notes
             ))
-            session.commit()
 
     def set_status(self, status: str, notes: str) -> None:
         """
@@ -401,7 +412,6 @@ class RunItem():
                 status = self.status,
                 output = self.output
             ))
-            session.commit()
 
     def update_active(self):
         self.last_active = dt.utcnow()
@@ -476,3 +486,10 @@ class RunItem():
 
 
 postgres_build(Base, engine, CUR_SCHEMA)
+
+# Critical index for the performace of fetching runs
+with Session.begin() as tx:
+    tx.execute(sql('''
+        CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_scheduled
+        ON orcha.runs (task_idf, scheduled_time);
+    '''))

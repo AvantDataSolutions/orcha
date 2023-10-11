@@ -2,6 +2,7 @@
 import time
 import threading
 
+from orcha.core import tasks
 from orcha.core.tasks import RunStatus, TaskItem, RunItem
 
 # TODO terminate nicely
@@ -92,9 +93,13 @@ class TaskRunner():
                 continue
             # print(f'Finished task {task.name} with run_id {run.run_idk}')
 
-    def __init__(self, run_in_thread: bool = True, use_thread_groups: bool = True):
+    def __init__(self, run_in_thread = True, use_thread_groups = True, default_runner = True):
         self.run_in_threads = run_in_thread
         self.use_thread_groups = use_thread_groups
+        if default_runner:
+            if tasks._register_task_with_runner is not None:
+                raise Exception('Default task runner already set')
+            tasks._register_task_with_runner = self.register_task
 
     def register_task(self, task: TaskItem):
         # TODO: check if task is already registered

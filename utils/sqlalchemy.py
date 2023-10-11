@@ -5,7 +5,6 @@ from typing import Literal, Type
 
 import pandas as pd
 from sqlalchemy import MetaData, Table, create_engine, inspect
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.engine.row import Row
@@ -14,8 +13,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
-from orcha.core.credentials import (POSTGRES_CORE_DB, POSTGRES_CORE_PASSWORD,
-                                    POSTGRES_CORE_SERVER, POSTGRES_CORE_USER,
+from orcha.core.credentials import (ORCHA_CORE_DB, ORCHA_CORE_PASSWORD,
+                                    ORCHA_CORE_SERVER, ORCHA_CORE_USER,
                                     check_credentials)
 
 DeclarativeBaseType = Type[declarative_base()]
@@ -26,11 +25,10 @@ def postgres_scaffold(schema_name: str):
     check_credentials()
     if schema_name not in SCAFFOLD_CACHE:
         engine = create_engine(
-            f'postgresql://{POSTGRES_CORE_USER}:{POSTGRES_CORE_PASSWORD}@{POSTGRES_CORE_SERVER}/{POSTGRES_CORE_DB}',
+            f'postgresql://{ORCHA_CORE_USER}:{ORCHA_CORE_PASSWORD}@{ORCHA_CORE_SERVER}/{ORCHA_CORE_DB}',
             pool_size=50,
             max_overflow=2,
             pool_recycle=300,
-            pool_pre_ping=True,
             pool_use_lifo=True
         )
         Base = declarative_base(metadata=MetaData(schema=schema_name, bind=engine))

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal
-
-from abc import ABC, abstractmethod
-
+from typing import Callable, Literal
 
 import pandas as pd
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
 
 from orcha.utils.sqlalchemy import DeclarativeBaseType
+
 
 def module_function(func):
     """
@@ -26,10 +25,13 @@ def module_function(func):
 
 
 @dataclass
-class ModuleBase(ABC):
+class ModuleBase():
     module_idk: str
     name: str
     description: str
+    # TODO Some form of lineage
+    # upstream: list[ModuleBase]
+    # downstream: list[ModuleBase]
 
 
 @dataclass
@@ -131,21 +133,22 @@ class DatabaseSink(SinkBase):
             **kwargs
         )
 
-
 @dataclass
 class TransformBase(ModuleBase):
-    @staticmethod
-    @module_function
-    def transform(data: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        raise NotImplementedError(f'{__class__.__name__} does not implement transform')
+    function: Callable
+    # ...
+
+    @abstractmethod
+    def transform(self, **kwargs):
+        return NotImplementedError(f'{__class__.__name__} does not implement transform')
 
 
 @dataclass
 class ValidationBase(ModuleBase):
-    @staticmethod
+    function: Callable
     @module_function
-    def validate(data: pd.DataFrame, **kwargs) -> bool:
-        raise NotImplementedError(f'{__class__.__name__} does not implement validate')
+    def validate(self, data: pd.DataFrame, **kwargs) -> bool:
+        return self.function(data, **kwargs)
 
 
 @dataclass
