@@ -82,7 +82,7 @@ class TaskRunner():
             # print(f'Running task {task.name} with run_id {run.run_idk}')
             try:
                 # print('Running task:', task.task_idk)
-                task.task_function(run)
+                task.task_function(task, run)
                 running_dict[run.run_idk] = False
             except Exception as e:
                 # print(f'Error running task {task.name} with run_id {run.run_idk}, with exception: {str(e)}')

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Literal
 
 import pandas as pd
+from sqlalchemy import Table, Column
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text as sql
 
-from orcha.utils.sqlalchemy import DeclarativeMeta
+from orcha.utils.sqlalchemy import create_table
 
 
 def module_function(func):
@@ -46,10 +47,9 @@ class DatabaseEntity(EntityBase):
     host: str
     port: int
     database_name: str
-    schema_name: str
-    declarative_base: DeclarativeMeta | None = None
     engine: MockConnection | None = None
     sessionmaker: sessionmaker | None = None
+    _tables: list[Table] = field(default_factory=list)
 
     def run_query(self, query: str, bindparams: dict, return_values: bool):
         if self.sessionmaker is None:
@@ -61,6 +61,24 @@ class DatabaseEntity(EntityBase):
             else:
                 return None
 
+    def define_table(self, schema_name: str,  table_name: str, columns: list[Column]):
+        """
+        Define a table with the given name, columns, and primary key.
+        This will create the table in the database if it does not already exist and
+        throw an error if it does exist and the columns do not match.
+        """
+        if self.engine is None:
+            raise Exception('No engine set')
+
+        table = create_table(
+            schema_name=schema_name,
+            table_name=table_name,
+            columns=columns,
+            engine=self.engine
+        )
+        self._tables.append(table)
+        return table
+
 
     def read_sql(self, query: str, **kwargs) -> pd.DataFrame:
         """
@@ -71,7 +89,7 @@ class DatabaseEntity(EntityBase):
         return pd.read_sql(query, self.engine, **kwargs)
 
     def to_sql(
-            self, data: pd.DataFrame, table_name: str,
+            self, data: pd.DataFrame, table: Table,
             if_exists: Literal['fail', 'replace', 'append', 'upsert'] = 'fail',
             index: bool = False, **kwargs
         ) -> None:
@@ -83,7 +101,7 @@ class DatabaseEntity(EntityBase):
             raise NotImplementedError(f'{__class__.__name__} does not implement upsert')
         elif self.engine is None:
             raise Exception('No engine set')
-        data.to_sql(table_name, self.engine, if_exists=if_exists, index=index, **kwargs)
+        data.to_sql(table.name, self.engine, if_exists=if_exists, index=index, **kwargs)
 
 
 class RestEntity(EntityBase):
@@ -108,7 +126,17 @@ class SourceBase(ModuleBase):
 @dataclass
 class DatabaseSource(SourceBase):
     data_entity: DatabaseEntity | None
+    tables: list[Table]
     query: str
+
+    @module_function
+    def get(self, **kwargs) -> pd.DataFrame:
+        if self.data_entity is None:
+            raise Exception('No data entity set for source')
+        elif self.tables == None or self.tables == []:
+            raise Exception('No tables set for source')
+        else:
+            return self.data_entity.read_sql(self.query, **kwargs)
 
 
 @dataclass
@@ -129,26 +157,31 @@ class SinkBase(ModuleBase):
 @dataclass
 class DatabaseSink(SinkBase):
     data_entity: DatabaseEntity
-    table_name: str
+    table: Table
     if_exists: Literal['fail', 'replace', 'append', 'upsert'] = 'fail'
     index: bool = False
 
+    @module_function
     def save(self, data: pd.DataFrame, **kwargs) -> None:
+
+        if self.data_entity is None:
+            raise Exception('No data entity set for sink')
+        elif self.table is None:
+            raise Exception('No table set for sink')
+
         self.data_entity.to_sql(
             data=data,
-            table_name=self.table_name,
+            table=self.table,
             if_exists=self.if_exists,
             index=self.index,
             **kwargs
         )
 
-@dataclass
-class TransformBase(ModuleBase):
-    function: Callable
-    # ...
 
+class TransformBase(ModuleBase):
+    @staticmethod
     @abstractmethod
-    def transform(self, **kwargs):
+    def transform(data: pd.DataFrame, **kwargs):
         return NotImplementedError(f'{__class__.__name__} does not implement transform')
 
 

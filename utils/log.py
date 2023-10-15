@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSON as SQL_JSON
 from sqlalchemy.dialects.postgresql import UUID as SQL_UUID
-from orcha.utils.sqlalchemy import postgres_build, postgres_scaffold
+from orcha.utils.sqlalchemy import sqlalchemy_build, postgres_scaffold
 
 
 class LogManager:
@@ -41,7 +41,7 @@ class LogManager:
             text = Column(String)
             json = Column(SQL_JSON)
 
-        postgres_build(Base, engine, CUR_SCHEMA)
+        sqlalchemy_build(Base, engine, CUR_SCHEMA)
 
 
     def __init__(self, source_name: str) -> None:

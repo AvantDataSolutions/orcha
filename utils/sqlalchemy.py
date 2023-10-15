@@ -4,7 +4,7 @@ import re
 from typing import Literal
 
 import pandas as pd
-from sqlalchemy import MetaData, Table, create_engine, inspect
+from sqlalchemy import MetaData, Table, Column, create_engine, inspect
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.engine.row import Row
@@ -16,17 +16,31 @@ from sqlalchemy.sql import text as sql
 
 SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, MockConnection, sessionmaker]] = {}
 
+def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
+    """
+    Creates a connection to a database without a schema or
+    declarative base object. Returns the engine and sessionmaker.
+    Postgres specific connection parameters are set here.
+    """
+    engine = create_engine(
+        f'postgresql://{user}:{passwd}@{server}/{db}',
+        pool_size=50,
+        max_overflow=2,
+        pool_recycle=300,
+        pool_use_lifo=True
+    )
+    session = sessionmaker(bind=engine)
+    return engine, session
+
 def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str):
+    """
+    Creates a connection to a specific database and schema,
+    and returns the SQLAlchemy Base object, engine and sessionmaker.
+    Postgres specific connection parameters are set here.
+    """
     if schema not in SCAFFOLD_CACHE:
-        engine = create_engine(
-            f'postgresql://{user}:{passwd}@{server}/{db}',
-            pool_size=50,
-            max_overflow=2,
-            pool_recycle=300,
-            pool_use_lifo=True
-        )
+        engine, session = postgres_partial_scaffold(user, passwd, server, db)
         Base = declarative_base(metadata=MetaData(schema=schema, bind=engine))
-        session = sessionmaker(bind=engine)
 
         SCAFFOLD_CACHE[schema] = (Base, engine, session)
     if schema in SCAFFOLD_CACHE:
@@ -35,33 +49,92 @@ def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str)
         raise Exception('Failed to create scaffold for: ' + schema)
 
 
-def postgres_build(base: DeclarativeMeta, engine: MockConnection, schema_name: str):
+def sqlalchemy_build(base: DeclarativeMeta, engine: MockConnection, schema_name: str):
+    """
+    General build function for SQLAlchemy schema and tables.
+    Uses the provided engine so is database agnostic.
+    """
+    sqlalchemy_build_schema(schema_name, engine)
+
+    # Load the metadata from the existing database
+    existing_metadata = MetaData()
+    existing_metadata.reflect(bind=engine)
+
+    # Compare the existing metadata to the metadata in your code
+    for table_name, table in base.metadata.tables.items(): # type: ignore
+        if table_name in existing_metadata.tables:
+            if existing_metadata.tables is None:
+                continue
+            existing_table = existing_metadata.tables[table_name]
+            if not tables_match(table, existing_table):
+                raise Exception(f'Table {table} does not match the definition in the code.')
+
+
+    base.metadata.create_all(engine, checkfirst=True) # type: ignore
+
+def sqlalchemy_build_schema(schema_name: str, engine: MockConnection):
     engine_inspect = inspect(engine)
     if engine_inspect is None:
         raise Exception('Engine inspect failed for schema: ' + schema_name)
     if schema_name not in engine_inspect.get_schema_names():
         engine.execute(CreateSchema(schema_name))
-    base.metadata.create_all(engine, checkfirst=True) # type: ignore
 
+
+def sqlalchemy_build_table(table: Table, engine: MockConnection):
+    engine_inspect = inspect(engine)
+    if engine_inspect is None:
+        raise Exception('Engine inspect failed for table: ' + table.name)
+    table.create(engine, checkfirst=True) # type: ignore
+    # If the table exists, check that the columns match
+    existing_table = Table(table.name, MetaData(schema=table.schema, bind=engine), autoload=True)
+    if not tables_match(table, existing_table):
+        raise Exception(f'Table "{table}" does not match the database table defintion')
+
+
+def tables_match(table1, table2):
+    """
+    Checks if the column names and types of two SQLAlchemy tables match.
+    """
+    if len(table1.columns) != len(table2.columns):
+        return False
+
+    for column1, column2 in zip(table1.columns, table2.columns):
+        if column1.name != column2.name or str(column1.type) != str(column2.type):
+            return False
+
+    return True
+
+
+def create_table(
+        schema_name: str,  table_name: str,
+        columns: list[Column], engine: MockConnection,
+        build_table: bool = True
+    ):
+    """
+    Returns an SQLAlchemy Table object with the given name, column definitions.
+    Optionally can build this table in the database or not.
+    """
+    metadata = MetaData(schema=schema_name, bind=engine)
+    table = Table(
+        table_name,
+        metadata,
+        *columns
+    )
+    if build_table:
+        sqlalchemy_build_table(table, engine)
+
+    return table
 
 def postgres_upsert(
-        base: DeclarativeMeta, session: sessionmaker,
-        table: str, data: pd.DataFrame
+        session: sessionmaker, table: Table, data: pd.DataFrame
     ) -> None:
     if len(data) == 0:
         return None
 
-    if '.' not in table:
-        raise Exception('Table must be in the format schema.table')
-
-    _, table = table.split('.')
-
     with session.begin() as db:
-        connection = db.get_bind()
-        table_obj = Table(table, base.metadata, autoload=True, autoload_with=connection) # type: ignore
         for chunk in [data[i:i+1000] for i in range(0, len(data), 1000)]:
-            stmt = insert(table_obj).values(chunk.to_dict('records'))
-            table_inspect = inspect(table_obj)
+            stmt = insert(table).values(chunk.to_dict('records'))
+            table_inspect = inspect(table)
             if table_inspect is None:
                 return None
             update_dict = {}

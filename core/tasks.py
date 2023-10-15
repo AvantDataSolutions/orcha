@@ -14,7 +14,7 @@ from sqlalchemy.sql import text as sql
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
 
-from orcha.utils.sqlalchemy import (get, get_latest_versions, postgres_build,
+from orcha.utils.sqlalchemy import (get, get_latest_versions, sqlalchemy_build,
                                     postgres_scaffold)
 
 
@@ -75,7 +75,7 @@ def setup_sqlalchemy(
         output = Column(PG_JSON)
 
 
-    postgres_build(Base, engine, ORCHA_SCHEMA)
+    sqlalchemy_build(Base, engine, ORCHA_SCHEMA)
 
     # Critical index for the performace of fetching runs
     with Session.begin() as tx:
@@ -152,9 +152,6 @@ class TaskItem():
             status: str = TaskStatus.ENABLED,
             register_with_runner: bool = True
         ):
-        if not is_initialised:
-            raise Exception('orcha not initialised. Call orcha.initialise() first')
-        cls.task_function = task_function    # type: ignore
         """
         task_id: The unique id used to identify this task. This is used
             to identify the task in the database and in the task runner and
@@ -165,8 +162,11 @@ class TaskItem():
             no longer required. Tasks must be explicitly disabled to prevent
             the scheduler from queuing runs for them.
         """
-        version = dt.utcnow()
 
+        if not is_initialised:
+            raise Exception('orcha not initialised. Call orcha.initialise() first')
+
+        version = dt.utcnow()
         current_task = TaskItem.get(task_idk)
 
         update_needed = False
@@ -195,6 +195,8 @@ class TaskItem():
             status=status,
             notes=None
         )
+
+        task.task_function = task_function # type: ignore
 
         if register_with_runner:
             if _register_task_with_runner is None:
@@ -288,7 +290,7 @@ class TaskItem():
             task_id=self.task_idk
         )
 
-    def task_function(self, run: RunItem | None) -> None:
+    def task_function(self, task: TaskItem, run: RunItem | None) -> None:
         """
         The Orcha task runner will pass the current run instance
         to this function which can be used to update the run status
