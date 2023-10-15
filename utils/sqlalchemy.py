@@ -1,47 +1,41 @@
 from __future__ import annotations
 
 import re
-from typing import Literal, Type
+from typing import Literal
 
 import pandas as pd
 from sqlalchemy import MetaData, Table, create_engine, inspect
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.engine.row import Row
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
-from orcha.core.credentials import (ORCHA_CORE_DB, ORCHA_CORE_PASSWORD,
-                                    ORCHA_CORE_SERVER, ORCHA_CORE_USER,
-                                    check_credentials)
 
-DeclarativeBaseType = Type[declarative_base()]
+SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, MockConnection, sessionmaker]] = {}
 
-SCAFFOLD_CACHE: dict[str, tuple[DeclarativeBaseType, MockConnection, sessionmaker]] = {}
-
-def postgres_scaffold(schema_name: str):
-    check_credentials()
-    if schema_name not in SCAFFOLD_CACHE:
+def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str):
+    if schema not in SCAFFOLD_CACHE:
         engine = create_engine(
-            f'postgresql://{ORCHA_CORE_USER}:{ORCHA_CORE_PASSWORD}@{ORCHA_CORE_SERVER}/{ORCHA_CORE_DB}',
+            f'postgresql://{user}:{passwd}@{server}/{db}',
             pool_size=50,
             max_overflow=2,
             pool_recycle=300,
             pool_use_lifo=True
         )
-        Base = declarative_base(metadata=MetaData(schema=schema_name, bind=engine))
+        Base = declarative_base(metadata=MetaData(schema=schema, bind=engine))
         session = sessionmaker(bind=engine)
 
-        SCAFFOLD_CACHE[schema_name] = (Base, engine, session)
-    if schema_name in SCAFFOLD_CACHE:
-        return SCAFFOLD_CACHE[schema_name]
+        SCAFFOLD_CACHE[schema] = (Base, engine, session)
+    if schema in SCAFFOLD_CACHE:
+        return SCAFFOLD_CACHE[schema]
     else:
-        raise Exception('Failed to create scaffold for: ' + schema_name)
+        raise Exception('Failed to create scaffold for: ' + schema)
 
 
-def postgres_build(base: DeclarativeBaseType, engine: MockConnection, schema_name: str):
+def postgres_build(base: DeclarativeMeta, engine: MockConnection, schema_name: str):
     engine_inspect = inspect(engine)
     if engine_inspect is None:
         raise Exception('Engine inspect failed for schema: ' + schema_name)
@@ -51,7 +45,7 @@ def postgres_build(base: DeclarativeBaseType, engine: MockConnection, schema_nam
 
 
 def postgres_upsert(
-        base: DeclarativeBaseType, session: sessionmaker,
+        base: DeclarativeMeta, session: sessionmaker,
         table: str, data: pd.DataFrame
     ) -> None:
     if len(data) == 0:

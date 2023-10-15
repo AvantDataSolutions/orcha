@@ -81,11 +81,11 @@ class TaskRunner():
             ra_thread.start()
             # print(f'Running task {task.name} with run_id {run.run_idk}')
             try:
-                print('Running task:', task.task_idk)
+                # print('Running task:', task.task_idk)
                 task.task_function(run)
                 running_dict[run.run_idk] = False
             except Exception as e:
-                print(f'Error running task {task.name} with run_id {run.run_idk}, with exception: {str(e)}')
+                # print(f'Error running task {task.name} with run_id {run.run_idk}, with exception: {str(e)}')
                 run.set_failed(output={
                     'exception': str(e),
                 })

@@ -7,8 +7,9 @@ from typing import Callable, Literal
 import pandas as pd
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import text as sql
 
-from orcha.utils.sqlalchemy import DeclarativeBaseType
+from orcha.utils.sqlalchemy import DeclarativeMeta
 
 
 def module_function(func):
@@ -46,12 +47,20 @@ class DatabaseEntity(EntityBase):
     port: int
     database_name: str
     schema_name: str
-    declarative_base: DeclarativeBaseType | None = None
+    declarative_base: DeclarativeMeta | None = None
     engine: MockConnection | None = None
     sessionmaker: sessionmaker | None = None
 
-    def run_query(self, query: str, **kwargs) -> pd.DataFrame:
-        raise NotImplementedError(f'{__class__.__name__} does not implement run_query')
+    def run_query(self, query: str, bindparams: dict, return_values: bool):
+        if self.sessionmaker is None:
+            raise Exception('No sessionmaker set')
+        with self.sessionmaker.begin() as db:
+            data = db.execute(sql(query).bindparams(**bindparams))
+            if return_values:
+                return pd.DataFrame(data.fetchall(), columns=data.keys())
+            else:
+                return None
+
 
     def read_sql(self, query: str, **kwargs) -> pd.DataFrame:
         """

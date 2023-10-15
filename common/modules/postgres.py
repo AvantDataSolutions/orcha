@@ -26,7 +26,13 @@ class PostgresEntity(DatabaseEntity):
             database_name=database_name,
             schema_name=schema_name
         )
-        self.declarative_base, self.engine, self.sessionmaker = postgres_scaffold(schema_name)
+        self.declarative_base, self.engine, self.sessionmaker = postgres_scaffold(
+            user=user_name,
+            passwd=password,
+            server=host,
+            db=database_name,
+            schema=schema_name
+        )
 
 
     def to_sql(

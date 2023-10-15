@@ -66,5 +66,5 @@ class Scheduler:
                         if task.last_active < last_run.scheduled_time:
                             task.set_status('disabled', 'Task disabled due to inactivity')
                             continue
-                    print('Run due for task:', task.task_idk)
+                    # print('Run due for task:', task.task_idk)
                     run = task.schedule_run()
