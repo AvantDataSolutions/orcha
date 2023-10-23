@@ -3,7 +3,7 @@ import time
 import threading
 
 from orcha.core import tasks
-from orcha.core.tasks import RunStatus, TaskItem, RunItem
+from orcha.core.tasks import TaskItem, RunItem
 
 # TODO terminate nicely
 # https://itnext.io/containers-terminating-with-grace-d19e0ce34290
@@ -63,14 +63,14 @@ class TaskRunner():
                 run.update_active()
                 time.sleep(30)
 
-        # We only want to run the last run if its queued. If we're backing up
-        # runs then the user needs to manage how long runs are taking and how
-        # the schedule it's being run on
-        last_run = task.get_last_run()
-        if last_run is None or last_run.status != RunStatus.QUEUED:
-            return
-        # queued_runs = task.get_queued_runs()
-        queued_runs = [last_run]
+        # Because we have multiple schedules for a task we need
+        # to get all the runs that are queued and run them because
+        # some schedules will have runs queued at the same time
+        queued_runs = task.get_queued_runs()
+        # last_run = task.get_last_run()
+        # if last_run is None or last_run.status != RunStatus.QUEUED:
+        #     return
+        # queued_runs = [last_run]
         for run in queued_runs:
             # Set the run as started so when we update the active time it
             # has the version that has already started otherwise it will
@@ -82,7 +82,9 @@ class TaskRunner():
             # print(f'Running task {task.name} with run_id {run.run_idk}')
             try:
                 # print('Running task:', task.task_idk)
-                task.task_function(task, run)
+                # Run the function with the config provided in the run itself
+                # this is to allow for manual runs to have different configs
+                task.task_function(task, run, run.config)
                 running_dict[run.run_idk] = False
             except Exception as e:
                 # print(f'Error running task {task.name} with run_id {run.run_idk}, with exception: {str(e)}')

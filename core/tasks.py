@@ -54,9 +54,10 @@ def setup_sqlalchemy(
 
         task_idk = Column(String, primary_key=True)
         version = Column(DateTime(timezone=False), primary_key=True)
+        metadata = Column(PG_JSON)
         name = Column(String)
         description = Column(String)
-        cron_schedule = Column(String)
+        schedule_sets = Column(PG_JSON)
         thread_group = Column(String)
         last_active = Column(DateTime(timezone=False))
         status = Column(String)
@@ -67,10 +68,12 @@ def setup_sqlalchemy(
 
         run_idk = Column(String, primary_key=True)
         task_idf = Column(String)
+        set_idf = Column(String)
         scheduled_time = Column(DateTime(timezone=False))
         start_time = Column(DateTime(timezone=False))
         end_time = Column(DateTime(timezone=False))
         last_active = Column(DateTime(timezone=False))
+        config = Column(PG_JSON)
         status = Column(String)
         output = Column(PG_JSON)
 
@@ -82,6 +85,9 @@ def setup_sqlalchemy(
         tx.execute(sql('''
             CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_scheduled
             ON orcha.runs (task_idf, scheduled_time);
+
+            CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_set_scheduled
+            ON orcha.runs (task_idf, set_idf, scheduled_time);
         '''))
 
 """
@@ -104,16 +110,83 @@ class TaskType():
 
 
 @dataclass
+class ScheduleSet():
+    set_idk: str | None
+    cron_schedule: str
+    config: dict
+
+    @staticmethod
+    def list_to_dict(schedule_sets: list[ScheduleSet]) -> list[dict]:
+        return [x.to_dict() for x in schedule_sets]
+
+    def __init__(self, cron_schedule: str, config: dict) -> None:
+        """
+        Creates a schedule set for a task with a cron schedule and config.
+        set_idk is generated automatically when the schedule set is added to
+        a task which allows the same cron schedule to be used on multiple tasks.
+        """
+        self.set_idk = None
+        self.cron_schedule = cron_schedule
+        self.config = config
+
+    @staticmethod
+    def create_with_key(set_idk: str, cron_schedule: str, config: dict) -> ScheduleSet:
+        """
+        Creates a schedule set for a task with a cron schedule and config.
+        set_idk is generated automatically when the schedule set is added to
+        a task which allows the same cron schedule to be used on multiple tasks.
+        """
+        s_set = ScheduleSet(
+            cron_schedule=cron_schedule,
+            config=config
+        )
+        s_set.set_idk = set_idk
+        return s_set
+
+    def to_dict(self):
+        return {
+            'set_idk': self.set_idk,
+            'cron_schedule': self.cron_schedule,
+            'config': self.config
+        }
+
+
 class TaskItem():
     task_idk: str
     version: dt
+    metadata: dict
     name: str
     description: str
-    cron_schedule: str
+    schedule_sets: list[ScheduleSet]
     thread_group: str
     last_active: dt
     status: str
     notes: str | None = None
+
+    def __init__(
+            self, task_idk: str, version: dt, metadata: dict, name: str,
+            description: str, schedule_sets: list[ScheduleSet] | list[dict],
+            thread_group: str, last_active: dt, status: str,
+            notes: str | None = None
+        ) -> None:
+        # If the schedule sets are passed as a dict, most likely from
+        # the database, then convert them to a list of ScheduleSet objects
+        sets = []
+        for schedule_set in schedule_sets:
+            if type(schedule_set) == dict:
+                sets.append(ScheduleSet.create_with_key(**schedule_set))
+            else:
+                sets.append(schedule_set)
+        self.task_idk = task_idk
+        self.version = version
+        self.metadata = metadata
+        self.name = name
+        self.description = description
+        self.schedule_sets = sets
+        self.thread_group = thread_group
+        self.last_active = last_active
+        self.status = status
+        self.notes = notes
 
     @staticmethod
     def get_all() -> list[TaskItem]:
@@ -147,9 +220,10 @@ class TaskItem():
     @classmethod
     def create(
             cls, task_idk: str, name: str, description: str,
-            cron_schedule: str, thread_group,
-            task_function: Callable[[TaskItem | None, RunItem | None], None],
+            schedule_sets: list[ScheduleSet], thread_group,
+            task_function: Callable[[TaskItem | None, RunItem | None, dict], None],
             status: str = TaskStatus.ENABLED,
+            metadata: dict = {},
             register_with_runner: bool = True
         ):
         """
@@ -168,14 +242,18 @@ class TaskItem():
 
         version = dt.utcnow()
         current_task = TaskItem.get(task_idk)
+        for schedule in schedule_sets:
+            # set the set_idk as task_id+cron_schedule
+            schedule.set_idk = f'{task_idk}_{schedule.cron_schedule}'
 
         update_needed = False
         if current_task is None:
             update_needed = True
         elif (
+            current_task.metadata != metadata or
             current_task.name != name or
             current_task.description != description or
-            current_task.cron_schedule != cron_schedule or
+            current_task.schedule_sets != schedule_sets or
             current_task.thread_group != thread_group or
             current_task.status != status
         ):
@@ -187,9 +265,10 @@ class TaskItem():
         task = TaskItem(
             task_idk=task_idk,
             version=version,
+            metadata=metadata,
             name=name,
             description=description,
-            cron_schedule=cron_schedule,
+            schedule_sets=schedule_sets,
             thread_group=thread_group,
             last_active=version,
             status=status,
@@ -216,9 +295,10 @@ class TaskItem():
             session.merge(TaskRecord(
                 task_idk = self.task_idk,
                 version = self.version,
+                metadata = self.metadata,
                 name = self.name,
                 description = self.description,
-                cron_schedule = self.cron_schedule,
+                schedule_sets = ScheduleSet.list_to_dict(self.schedule_sets),
                 thread_group = self.thread_group,
                 last_active = self.last_active,
                 status = self.status,
@@ -233,6 +313,7 @@ class TaskItem():
         self.status = status
         self.notes = notes
         self._update_db()
+
     def update_active(self) -> None:
         """
         Used to indicate to the scheduler the last time the task was active.
@@ -242,12 +323,18 @@ class TaskItem():
         self.last_active = dt.utcnow()
         self._update_db()
 
+    def get_schedule_from_id(self, set_idk: str) -> ScheduleSet | None:
+        for schedule in self.schedule_sets:
+            if schedule.set_idk == set_idk:
+                return schedule
+        return None
 
-    def get_last_scheduled(self) -> dt:
-        return croniter(self.cron_schedule, dt.now()).get_prev(dt)
+    def get_last_scheduled(self, schedule: ScheduleSet) -> dt:
+        cron_schedule = schedule.cron_schedule
+        return croniter(cron_schedule, dt.now()).get_prev(dt)
 
-    def get_time_between_runs(self) -> td:
-        cron = croniter(self.cron_schedule)
+    def get_time_between_runs(self, schedule: ScheduleSet) -> td:
+        cron = croniter(schedule.cron_schedule)
         next_run_time_1 = cron.get_next(dt)
         next_run_time_2 = cron.get_next(dt)
         time_delta = next_run_time_2 - next_run_time_1
@@ -261,41 +348,47 @@ class TaskItem():
     #         since=dt(2023, 1, 1)
     #     )
 
-    def get_last_run(self) -> RunItem | None:
-        return RunItem.get_latest(task=self)
+    def get_last_run(self, schedule: ScheduleSet) -> RunItem | None:
+        return RunItem.get_latest(task=self, schedule=schedule)
 
-    def is_run_due(self):
-        is_due, _ = self.is_run_due_with_last()
+    def is_run_due(self, schedule: ScheduleSet):
+        is_due, _ = self.is_run_due_with_last(schedule)
         return is_due
 
-    def is_run_due_with_last(self) -> tuple[bool, RunItem | None]:
+    def is_run_due_with_last(self, schedule: ScheduleSet) -> tuple[bool, RunItem | None]:
         """
-        Returns if a run is due and the last run instance
-        to save calling get_last_run twice
+        Returns if a run is due for the particular schedule set and
+        the last run instance to save calling get_last_run twice
         Returns a tuple of (is_due, last_run)
         """
-        last_run = RunItem.get_latest(task=self)
+        last_run = RunItem.get_latest(task=self, schedule=schedule)
         if last_run is None:
             return True, last_run
-        return last_run.scheduled_time < self.get_last_scheduled(), last_run
+        return last_run.scheduled_time < self.get_last_scheduled(schedule), last_run
 
-    def schedule_run(self) -> RunItem:
+    def schedule_run(self, schedule) -> RunItem:
         return RunItem.create(
             task=self,
-            scheduled_time=self.get_last_scheduled()
+            scheduled_time=self.get_last_scheduled(schedule),
+            schedule=schedule
         )
 
     def get_queued_runs(self) -> list[RunItem]:
         return RunItem.get_all_queued(
-            task_id=self.task_idk
+            task_id=self.task_idk,
+            schedule=None
         )
 
-    def task_function(self, task: TaskItem, run: RunItem | None) -> None:
+    def task_function(self, task: TaskItem | None, run: RunItem | None, config: dict) -> None:
         """
         The Orcha task runner will pass the current run instance
         to this function which can be used to update the run status
         as required, however the function can be manually called with
         no run instance if required (e.g. for testing)
+        args:
+            task: The task that is the owner of this run
+            run: The current run instance
+            config: The task config for the current run from the schedule set
         """
         raise NotImplementedError(f'task_id {self.task_idk} does not implement task_function')
 
@@ -325,10 +418,12 @@ class RunItem():
     _task: TaskItem
     run_idk: str
     task_idf: str
+    set_idf: str
     scheduled_time: dt
     start_time: dt | None
     end_time: dt | None
     last_active: dt | None
+    config: dict
     status: str
     output: dict | None = None
 
@@ -350,20 +445,25 @@ class RunItem():
         return task_id, task
 
     @staticmethod
-    def create(task: TaskItem, scheduled_time: dt) -> RunItem:
+    def create(task: TaskItem, schedule: ScheduleSet, scheduled_time: dt) -> RunItem:
         if not is_initialised:
             raise Exception('orcha not initialised. Call orcha.initialise() first')
         run_idk = str(uuid4())
         status = RunStatus.QUEUED
 
+        if schedule.set_idk is None:
+            raise Exception('Schedule set idk not set')
+
         item = RunItem(
             _task = task,
             run_idk = run_idk,
             task_idf = task.task_idk,
+            set_idf = schedule.set_idk,
             scheduled_time = scheduled_time,
             start_time = None,
             end_time = None,
             last_active = None,
+            config = schedule.config,
             status = status,
             output = None
         )
@@ -372,46 +472,56 @@ class RunItem():
         return item
 
     @staticmethod
-    def get_all(since: dt, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+    def get_all(schedule: ScheduleSet | None, since: dt, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+        """
+        Gets all runs for a task since a particular time (inclusive)
+        for a particular schedule set (optional, None for all runs)
+        """
         task_id, task = RunItem._task_id_populate(task_id, task)
+        pairs = [
+            ('task_idf', '=', task_id),
+            ('scheduled_time', '>=', since.isoformat())
+        ]
+        if schedule is not None:
+            pairs.append(('set_idf', '=', schedule.set_idk))
         data = get(
             session = Session,
             table='orcha.runs',
             select_columns='*',
-            match_pairs=[
-                ('task_idf', '=', task_id),
-                ('scheduled_time', '>=', since.isoformat())
-            ],
+            match_pairs=pairs,
         )
         return [RunItem(task, **x) for x in data]
 
     @staticmethod
-    def get_all_queued(task_id: str) -> list[RunItem]:
-        task_id, task = RunItem._task_id_populate(task_id, None)
+    def get_all_queued(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+        task_id, task = RunItem._task_id_populate(task_id, task)
+        pairs = [
+            ('task_idf', '=', task_id),
+            ('status', '=', RunStatus.QUEUED)
+        ]
+        if schedule is not None:
+            pairs.append(('set_idf', '=', schedule.set_idk))
         data = get(
             session = Session,
             table='orcha.runs',
             select_columns='*',
-            match_pairs=[
-                ('task_idf', '=', task_id),
-                ('status', '=', RunStatus.QUEUED)
-            ],
+            match_pairs=pairs,
         )
         return [RunItem(task, **x) for x in data]
 
     @staticmethod
-    def get_latest(task_id: str | None = None, task: TaskItem | None = None) -> RunItem | None:
+    def get_latest(schedule: ScheduleSet, task_id: str | None = None, task: TaskItem | None = None) -> RunItem | None:
         task_id, task = RunItem._task_id_populate(task_id, task)
         # To keep query time less dependent on the number of runs in the database
         # we can use the last run time and the time between runs to get the
         # window where the last run should have occurred
-        last_run_time = task.get_last_scheduled()
-        time_between_runs = task.get_time_between_runs()
-        runs = RunItem.get_all(task=task, since=last_run_time - time_between_runs*2)
+        last_run_time = task.get_last_scheduled(schedule)
+        time_between_runs = task.get_time_between_runs(schedule)
+        runs = RunItem.get_all(task=task, since=last_run_time - time_between_runs*2, schedule=schedule)
         if len(runs) == 0:
             # If we didn't get any runs - e.g. when the runner is started up
             # then query the full time window for any last run
-            runs = RunItem.get_all(task=task, since=dt.min)
+            runs = RunItem.get_all(task=task, since=dt.min, schedule=schedule)
         if len(runs) == 0:
             return None
         # order runs by scheduled_time
@@ -445,10 +555,12 @@ class RunItem():
             session.merge(RunRecord(
                 run_idk = self.run_idk,
                 task_idf = self.task_idf,
+                set_idf = self.set_idf,
                 scheduled_time = self.scheduled_time,
                 start_time = self.start_time,
                 end_time = self.end_time,
                 last_active = self.last_active,
+                config = self.config,
                 status = self.status,
                 output = self.output
             ))
