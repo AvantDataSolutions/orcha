@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import pandas as pd
 from orcha.core.module_base import TransformBase, module_function
 
@@ -14,6 +13,24 @@ class TrimWhitespaceTransform(TransformBase):
     @classmethod
     @module_function
     def transform(cls, data: pd.DataFrame) -> pd.DataFrame:
-        raise Exception('This is a deliberate error')
-        return data.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        return data.map(lambda x: x.strip() if isinstance(x, str) else x)
 
+
+class ConvertDateTimeToStringTransform(TransformBase):
+    """
+    Convert all datetimes to strings
+    """
+    module_idk: str = 'datetime_to_string_transform'
+    name: str = 'datetime_to_string_transform'
+    description: str = 'Converts all datetimes to strings in the given format'
+
+
+    @classmethod
+    @module_function
+    def transform(cls, data: pd.DataFrame, format: str, notnull_as_none = True) -> pd.DataFrame:
+        for col in data.columns:
+            if pd.api.types.is_datetime64_any_dtype(data[col]):
+                data[col] = data[col].dt.strftime(format).replace('NaT', None)
+            if notnull_as_none:
+                data[col] = data[col].where(data[col].notnull(), None)
+        return data

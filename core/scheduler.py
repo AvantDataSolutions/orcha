@@ -3,6 +3,9 @@ import threading
 import time
 
 from orcha.core.tasks import TaskItem, TaskStatus, RunStatus
+from orcha.utils.log import LogManager
+
+orcha_log = LogManager('orcha')
 
 # TODO terminate nicely: https://itnext.io/containers-terminating-with-grace-d19e0ce34290
 # TODO https://docs.docker.com/engine/reference/commandline/stop/
@@ -23,6 +26,7 @@ class Scheduler:
         self.disable_stale_tasks = disable_stale_tasks
 
     def start(self, refresh_interval: float = 60):
+        orcha_log.add_entry('scheduler', 'status', 'Starting', {})
         self.is_running = True
         self.task_refresh_interval = refresh_interval
         self.thread = threading.Thread(target=self._run)
@@ -30,6 +34,7 @@ class Scheduler:
         return self.thread
 
     def stop(self):
+        orcha_log.add_entry('scheduler', 'status', 'Stopping', {})
         self.is_running = False
         if self.thread is not None:
             self.thread.join()
@@ -38,6 +43,7 @@ class Scheduler:
         while self.is_running:
             time.sleep(15)
             if self.last_refresh < time.time() - self.task_refresh_interval:
+                orcha_log.add_entry('scheduler', 'run', 'Refreshing tasks', {})
                 self.last_refresh = time.time()
                 self.all_tasks = TaskItem.get_all()
             elif len(self.all_tasks) == 0:

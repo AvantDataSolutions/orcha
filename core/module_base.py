@@ -61,11 +61,11 @@ class DatabaseEntity(EntityBase):
             else:
                 return None
 
-    def define_table(self, schema_name: str,  table_name: str, columns: list[Column]):
+    def define_table(self, schema_name: str,  table_name: str, columns: list[Column], build=True):
         """
         Define a table with the given name, columns, and primary key.
-        This will create the table in the database if it does not already exist and
-        throw an error if it does exist and the columns do not match.
+        build: If True, the table will be created in the database if it does not already exist and
+            checks if the column names match. If False no column name checks will be done.
         """
         if self.engine is None:
             raise Exception('No engine set')
@@ -74,7 +74,8 @@ class DatabaseEntity(EntityBase):
             schema_name=schema_name,
             table_name=table_name,
             columns=columns,
-            engine=self.engine
+            engine=self.engine,
+            build_table=build
         )
         self._tables.append(table)
         return table

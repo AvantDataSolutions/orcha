@@ -5,6 +5,7 @@ from typing import Literal
 
 import pandas as pd
 from sqlalchemy import MetaData, Table, Column, create_engine, inspect
+from sqlalchemy import DateTime, TIMESTAMP
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.engine.row import Row
@@ -98,12 +99,18 @@ def tables_match(table1, table2):
     if len(table1.columns) != len(table2.columns):
         return False
 
-    for column1, column2 in zip(table1.columns, table2.columns):
-        if column1.name != column2.name or str(column1.type) != str(column2.type):
+    for column1 in table1.columns:
+        if column1.name not in table2.columns:
             return False
-
+        column2 = table2.columns[column1.name]
+        # DateTime and TIMESTAMP are functionally equivalent so mark them as equal
+        if isinstance(column1.type, DateTime) and isinstance(column2.type, TIMESTAMP):
+            continue
+        if isinstance(column2.type, DateTime) and isinstance(column1.type, TIMESTAMP):
+            continue
+        if str(column1.type) != str(column2.type):
+            return False
     return True
-
 
 def create_table(
         schema_name: str,  table_name: str,
@@ -132,19 +139,21 @@ def postgres_upsert(
         return None
 
     with session.begin() as db:
+        table_inspect = inspect(table)
+        if table_inspect is None:
+            return None
+        index_elements = [column.name for column in table_inspect.primary_key]
+        if len(index_elements) == 0:
+            raise Exception('Cannot upsert on table with no Primary Key')
         for chunk in [data[i:i+1000] for i in range(0, len(data), 1000)]:
             stmt = insert(table).values(chunk.to_dict('records'))
-            table_inspect = inspect(table)
-            if table_inspect is None:
-                return None
             update_dict = {}
             for column in table_inspect.columns:
                 if column.primary_key:
                     continue
                 update_dict[column.name] = getattr(stmt.excluded, column.name)
-
             stmt = stmt.on_conflict_do_update(
-                index_elements=[column.name for column in table_inspect.primary_key],
+                index_elements=index_elements,
                 set_=update_dict
             )
             db.execute(stmt)
