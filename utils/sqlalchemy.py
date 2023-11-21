@@ -4,9 +4,12 @@ import re
 from typing import Literal
 
 import pandas as pd
-from sqlalchemy import MetaData, Table, Column, create_engine, inspect
+from sqlalchemy import (
+    MetaData, Table, Column, create_engine, inspect,
+    delete, insert as sqla_insert
+)
 from sqlalchemy import DateTime, TIMESTAMP
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
@@ -132,6 +135,21 @@ def create_table(
 
     return table
 
+
+def sqlalchemy_replace(
+        session: sessionmaker, table: Table, data: pd.DataFrame
+    ):
+
+    rows: list[dict] = data.to_dict('records')
+
+    with session.begin() as db:
+        delete_stmt = delete(table)
+        db.execute(delete_stmt)
+
+        insert_stmt = sqla_insert(table).values(rows)
+        db.execute(insert_stmt)
+
+
 def postgres_upsert(
         session: sessionmaker, table: Table, data: pd.DataFrame
     ) -> None:
@@ -146,7 +164,7 @@ def postgres_upsert(
         if len(index_elements) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
         for chunk in [data[i:i+1000] for i in range(0, len(data), 1000)]:
-            stmt = insert(table).values(chunk.to_dict('records'))
+            stmt = pg_insert(table).values(chunk.to_dict('records'))
             update_dict = {}
             for column in table_inspect.columns:
                 if column.primary_key:

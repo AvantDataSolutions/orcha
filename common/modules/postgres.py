@@ -7,7 +7,7 @@ from sqlalchemy import Table
 
 from orcha.core.module_base import DatabaseEntity
 from orcha.utils.sqlalchemy import (
-    postgres_partial_scaffold, postgres_upsert
+    postgres_partial_scaffold, postgres_upsert, sqlalchemy_replace
 )
 
 
@@ -39,7 +39,7 @@ class PostgresEntity(DatabaseEntity):
 
     def to_sql(
             self, data: pd.DataFrame, table: Table,
-            if_exists: Literal['fail', 'replace', 'append', 'upsert'] = 'fail',
+            if_exists: Literal['fail', 'replace', 'delete_replace', 'append', 'upsert'] = 'fail',
             index: bool = False, **kwargs
         ) -> None:
         """
@@ -54,6 +54,12 @@ class PostgresEntity(DatabaseEntity):
             raise Exception('No engine set')
         elif if_exists == 'upsert':
             return postgres_upsert(
+                session=self.sessionmaker,
+                table=table,
+                data=data
+            )
+        elif if_exists == 'delete_replace':
+            return sqlalchemy_replace(
                 session=self.sessionmaker,
                 table=table,
                 data=data

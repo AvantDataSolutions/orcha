@@ -91,7 +91,7 @@ class DatabaseEntity(EntityBase):
 
     def to_sql(
             self, data: pd.DataFrame, table: Table,
-            if_exists: Literal['fail', 'replace', 'append', 'upsert'] = 'fail',
+            if_exists: Literal['fail', 'replace', 'delete_replace', 'append', 'upsert'] = 'fail',
             index: bool = False, **kwargs
         ) -> None:
         """
@@ -100,6 +100,8 @@ class DatabaseEntity(EntityBase):
         """
         if if_exists == 'upsert':
             raise NotImplementedError(f'{__class__.__name__} does not implement upsert')
+        elif if_exists == 'delete_replace':
+            raise NotImplementedError(f'{__class__.__name__} does not implement delete_replace')
         elif self.engine is None:
             raise Exception('No engine set')
         data.to_sql(table.name, self.engine, if_exists=if_exists, index=index, **kwargs)
@@ -159,7 +161,7 @@ class SinkBase(ModuleBase):
 class DatabaseSink(SinkBase):
     data_entity: DatabaseEntity
     table: Table
-    if_exists: Literal['fail', 'replace', 'append', 'upsert'] = 'fail'
+    if_exists: Literal['fail', 'replace', 'delete_replace', 'append', 'upsert'] = 'fail',
     index: bool = False
 
     @module_function
