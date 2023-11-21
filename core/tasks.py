@@ -587,6 +587,7 @@ class RunItem():
                 run_idk = self.run_idk,
                 task_idf = self.task_idf,
                 set_idf = self.set_idf,
+                run_type = self.run_type,
                 scheduled_time = self.scheduled_time,
                 start_time = self.start_time,
                 end_time = self.end_time,
