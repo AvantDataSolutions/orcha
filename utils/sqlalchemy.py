@@ -140,14 +140,16 @@ def sqlalchemy_replace(
         session: sessionmaker, table: Table, data: pd.DataFrame
     ):
 
-    rows: list[dict] = data.to_dict('records')
-
     with session.begin() as db:
         delete_stmt = delete(table)
         db.execute(delete_stmt)
 
-        insert_stmt = sqla_insert(table).values(rows)
-        db.execute(insert_stmt)
+        # Chunk data to reduce peak memory usage
+        # when converting large dataframes to rows
+        for chunk in range(0, len(data), 5000):
+            rows = data.iloc[chunk:chunk+5000].to_dict('records')
+            insert_stmt = sqla_insert(table).values(rows)
+            db.execute(insert_stmt)
 
 
 def postgres_upsert(
