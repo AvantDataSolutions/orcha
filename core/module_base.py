@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Literal
 
 import pandas as pd
-from sqlalchemy import Table, Column
+from sqlalchemy import Table, Column, Index
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text as sql
@@ -61,7 +61,11 @@ class DatabaseEntity(EntityBase):
             else:
                 return None
 
-    def define_table(self, schema_name: str,  table_name: str, columns: list[Column], build=True):
+    def define_table(
+            self, schema_name: str,  table_name: str,
+            columns: list[Column], indexes: list[Index] = [],
+            build=True
+        ):
         """
         Define a table with the given name, columns, and primary key.
         build: If True, the table will be created in the database if it does not already exist and
@@ -74,6 +78,7 @@ class DatabaseEntity(EntityBase):
             schema_name=schema_name,
             table_name=table_name,
             columns=columns,
+            indexes=indexes,
             engine=self.engine,
             build_table=build
         )
@@ -161,7 +166,7 @@ class SinkBase(ModuleBase):
 class DatabaseSink(SinkBase):
     data_entity: DatabaseEntity
     table: Table
-    if_exists: Literal['fail', 'replace', 'delete_replace', 'append', 'upsert'] = 'fail',
+    if_exists: Literal['fail', 'replace', 'delete_replace', 'append', 'upsert'] = 'fail'
     index: bool = False
 
     @module_function

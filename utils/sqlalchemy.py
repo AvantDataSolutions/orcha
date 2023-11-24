@@ -5,7 +5,8 @@ from typing import Literal
 
 import pandas as pd
 from sqlalchemy import (
-    MetaData, Table, Column, create_engine, inspect,
+    MetaData, Table, Column, Index,
+    create_engine, inspect,
     delete, insert as sqla_insert
 )
 from sqlalchemy import DateTime, TIMESTAMP
@@ -91,20 +92,49 @@ def sqlalchemy_build_table(table: Table, engine: MockConnection):
     table.create(engine, checkfirst=True) # type: ignore
     # If the table exists, check that the columns match
     existing_table = Table(table.name, MetaData(schema=table.schema, bind=engine), autoload=True)
-    if not tables_match(table, existing_table):
-        raise Exception(f'Table "{table}" does not match the database table defintion')
+    table_match, match_str = tables_match(table, existing_table)
+    if not table_match:
+        raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
+    # If the table exists, check that the indexes match
+    index_match, match_str = indexes_match(table, existing_table)
+    if not index_match:
+        raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
 
+
+def indexes_match(table1, table2):
+    """
+    Checks if the indexes of two SQLAlchemy tables match.
+    """
+    if len(table1.indexes) != len(table2.indexes):
+        return False, 'Index count mismatch'
+    for index1 in table1.indexes:
+        index2 = None
+        for index in table2.indexes:
+            if index.name == index1.name:
+                index2 = index
+                break
+
+        if index2 is None:
+            return False, f'Index {index1.name} not in {table2.name}'
+
+        index1_cols = [col.name for col in index1.columns]
+        index2_cols = [col.name for col in index2.columns]
+        for col_name in index1_cols:
+            if col_name not in index2_cols:
+                return False, f'Index column mismatch: definition columns {index1_cols}, database columns {index2_cols}'
+
+    return True, ''
 
 def tables_match(table1, table2):
     """
     Checks if the column names and types of two SQLAlchemy tables match.
     """
     if len(table1.columns) != len(table2.columns):
-        return False
+        return False, 'Column count mismatch'
 
     for column1 in table1.columns:
         if column1.name not in table2.columns:
-            return False
+            return False, f'Column {column1.name} not in {table2.name}'
         column2 = table2.columns[column1.name]
         # DateTime and TIMESTAMP are functionally equivalent so mark them as equal
         if isinstance(column1.type, DateTime) and isinstance(column2.type, TIMESTAMP):
@@ -112,12 +142,13 @@ def tables_match(table1, table2):
         if isinstance(column2.type, DateTime) and isinstance(column1.type, TIMESTAMP):
             continue
         if str(column1.type) != str(column2.type):
-            return False
-    return True
+            return False, f'Column {column1.name} type mismatch: {column1.type} != {column2.type}'
+    return True, ''
 
 def create_table(
         schema_name: str,  table_name: str,
-        columns: list[Column], engine: MockConnection,
+        engine: MockConnection,
+        columns: list[Column], indexes: list[Index] = [],
         build_table: bool = True
     ):
     """
@@ -128,7 +159,8 @@ def create_table(
     table = Table(
         table_name,
         metadata,
-        *columns
+        *columns,
+        *indexes
     )
     if build_table:
         sqlalchemy_build_table(table, engine)
@@ -177,6 +209,38 @@ def postgres_upsert(
                 set_=update_dict
             )
             db.execute(stmt)
+
+
+def mssql_upsert(
+        data: pd.DataFrame,
+        session: sessionmaker,
+        table: Table
+    ):
+    if len(data) == 0:
+        return None
+
+    with session.begin() as db:
+        table_inspect = inspect(table)
+        if table_inspect is None:
+            return None
+
+        merge_on = [column.name for column in table_inspect.primary_key]
+
+        data.to_sql(name='#_temp', con=db.connection(), method='multi', chunksize=100, index=False)
+
+        db.execute(sql(f'''
+            MERGE {table.schema}.{table.name} AS target
+            USING #_temp AS source
+            ON (
+                {' AND '.join(f'source.{c} = target.{c}' for c in merge_on)}
+            )
+            WHEN NOT MATCHED BY TARGET THEN
+                INSERT ({', '.join(data.columns)})
+                VALUES ({', '.join(f'source.{c}' for c in data.columns)})
+            WHEN MATCHED THEN UPDATE SET
+                {', '.join(f'target.{c} = source.{c}' for c in data.columns)};
+            '''))
+        db.execute(sql('DROP TABLE #_temp'))
 
 
 def _sanitize_sql(input_str: str):
