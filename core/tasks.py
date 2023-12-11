@@ -668,8 +668,20 @@ class RunItem():
             output = output
         )
 
-    def update_output(self, output: dict | None = None):
+    def set_output(self, output: dict | None = None, merge = False):
+        """
+        Sets the output for the run. This will overwrite any existing output.
+        If merge is set to True then the output will be merged with any
+        existing output.
+        """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        new_output = output
+        if merge and db_item is not None:
+            new_output = db_item.output
+            if new_output is None:
+                new_output = {}
+            if output is not None:
+                new_output.update(output)
         if db_item is None:
             raise Exception('update_output failed, run not found')
         self.update(
