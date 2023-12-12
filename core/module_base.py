@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable, Literal
+from datetime import datetime as dt
 
 import pandas as pd
 from sqlalchemy import Table, Column, Index
@@ -10,6 +11,7 @@ from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text as sql
 
+from orcha.utils import kvdb
 from orcha.utils.sqlalchemy import create_table
 
 
@@ -20,7 +22,25 @@ def module_function(func):
     """
     def wrapper(module_base: ModuleBase, *args, **kwargs):
         try:
-            return func(module_base, *args, **kwargs)
+            start_time = dt.now()
+            return_value = func(module_base, *args, **kwargs)
+            end_time = dt.now()
+            # get any existing runs
+            current_run_times = kvdb.get('current_run_times', list)
+            if current_run_times is None:
+                current_run_times = []
+            # then add the new run time to it. We shouldn't have to
+            # deal with concurrent access here as each module is
+            # is run in the same thread
+            current_run_times.append({
+                'module_idk': module_base.module_idk,
+                'module_name': module_base.name,
+                'start_time_posix': start_time.timestamp(),
+                'end_time_posix': end_time.timestamp(),
+                'duration_seconds': (end_time - start_time).total_seconds()
+            })
+            kvdb.store('local', 'current_run_times', current_run_times)
+            return return_value
         except Exception as e:
             raise Exception(f'Exception in {module_base.name} ({module_base.module_idk}) module: {e}')
     return wrapper

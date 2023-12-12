@@ -4,6 +4,7 @@ import threading
 
 from orcha.core import tasks
 from orcha.core.tasks import TaskItem, RunItem
+from orcha.utils import kvdb
 
 # TODO terminate nicely
 # https://itnext.io/containers-terminating-with-grace-d19e0ce34290
@@ -84,9 +85,19 @@ class TaskRunner():
                 # print('Running task:', task.task_idk)
                 # Run the function with the config provided in the run itself
                 # this is to allow for manual runs to have different configs
+
+                # Clear any existing runtimes in the current thread
+                kvdb.store('local', 'current_run_times', [])
                 task.task_function(task, run, run.config)
+                # then fetch back any runtimes that were stored by modules
+                current_run_times = kvdb.get('current_run_times', list)
+                if current_run_times is None:
+                    raise Exception('Task run times not found')
+                new_output = {'run_times': current_run_times}
+                run.set_output(new_output, merge=True)
                 running_dict[run.run_idk] = False
             except Exception as e:
+                # raise e
                 # print(f'Error running task {task.name} with run_id {run.run_idk}, with exception: {str(e)}')
                 run.set_failed(output={
                     'exception': str(e),

@@ -626,13 +626,20 @@ class RunItem():
         if needs_update:
             self._update_db()
 
-    def set_running(self, output: dict | None = None):
+    def set_running(self, output: dict = {}):
+        """
+        Sets the run as running and sets the start time.
+        Merges the output with any existing output.
+        """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.RUNNING:
                 # if it's already set, we don't
                 # want to update it again
                 return
+            if db_item.output is not None:
+                output.update(db_item.output)
+
         self.update(
             status = RunStatus.RUNNING,
             start_time = dt.utcnow(),
@@ -640,13 +647,20 @@ class RunItem():
             output = output
         )
 
-    def set_success(self, output: dict | None = None):
+    def set_success(self, output: dict = {}):
+        """
+        Sets the run as success and sets the end time.
+        Merges the output with any existing output.
+        """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.SUCCESS:
                 # if it's already set, we don't
                 # want to update it again
                 return
+            if db_item.output is not None:
+                output.update(db_item.output)
+
         self.update(
             status = RunStatus.SUCCESS,
             start_time = self.start_time,
@@ -654,13 +668,20 @@ class RunItem():
             output = output
         )
 
-    def set_failed(self, output: dict | None = None):
+    def set_failed(self, output: dict = {}):
+        """
+        Sets the run as failed and sets the end time.
+        Merges the output with any existing output.
+        """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # if it's already set, we don't
                 # want to update it again
                 return
+            if db_item.output is not None:
+                output.update(db_item.output)
+
         self.update(
             status = RunStatus.FAILED,
             start_time = self.start_time,
@@ -668,25 +689,26 @@ class RunItem():
             output = output
         )
 
-    def set_output(self, output: dict | None = None, merge = False):
+    def set_output(self, output: dict | None, merge = False):
         """
         Sets the output for the run. This will overwrite any existing output.
         If merge is set to True then the output will be merged with any
         existing output.
         """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        if db_item is None:
+            raise Exception('update_output failed, run not found')
         new_output = output
-        if merge and db_item is not None:
+        if merge:
             new_output = db_item.output
             if new_output is None:
                 new_output = {}
             if output is not None:
                 new_output.update(output)
-        if db_item is None:
-            raise Exception('update_output failed, run not found')
+
         self.update(
             status = db_item.status,
             start_time = db_item.start_time,
             end_time = db_item.end_time,
-            output = output
+            output = new_output
         )
