@@ -90,7 +90,7 @@ class TaskRunner():
                 kvdb.store('local', 'current_run_times', [])
                 task.task_function(task, run, run.config)
                 # then fetch back any runtimes that were stored by modules
-                current_run_times = kvdb.get('current_run_times', list)
+                current_run_times = kvdb.get('current_run_times', list, 'local')
                 if current_run_times is None:
                     raise Exception('Task run times not found')
                 new_output = {'run_times': current_run_times}
