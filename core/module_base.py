@@ -26,7 +26,9 @@ def module_function(func):
             return_value = func(module_base, *args, **kwargs)
             end_time = dt.now()
             # get any existing runs
-            current_run_times = kvdb.get('current_run_times', list)
+            # if we're running outside of the scheduler
+            # then we won't have a key in the kvdb and will return None
+            current_run_times = kvdb.get('current_run_times', list, 'local')
             if current_run_times is None:
                 current_run_times = []
             # then add the new run time to it. We shouldn't have to
