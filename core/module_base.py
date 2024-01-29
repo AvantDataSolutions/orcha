@@ -1,18 +1,17 @@
 from __future__ import annotations
-
 from abc import abstractmethod
+
 from dataclasses import dataclass, field
-from typing import Callable, Literal
 from datetime import datetime as dt
+from typing import Callable, Literal
 
 import pandas as pd
-from sqlalchemy import Table, Column, Index
+from orcha.utils import kvdb
+from orcha.utils.sqlalchemy import create_table
+from sqlalchemy import Column, Index, Table
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text as sql
-
-from orcha.utils import kvdb
-from orcha.utils.sqlalchemy import create_table
 
 
 def module_function(func):
@@ -44,7 +43,7 @@ def module_function(func):
             kvdb.store('local', 'current_run_times', current_run_times)
             return return_value
         except Exception as e:
-            raise Exception(f'Exception in {module_base.name} ({module_base.module_idk}) module: {e}')
+            raise Exception(f'Exception ({type(e).__name__}) in {module_base.name} ({module_base.module_idk}) module: {e}')
     return wrapper
 
 
@@ -138,6 +137,10 @@ class RestEntity(EntityBase):
     url: str
 
 
+class PythonEntity(EntityBase):
+    credentials: dict | None = None
+
+
 @dataclass
 class SourceBase(ModuleBase):
     data_entity: EntityBase | None
@@ -167,6 +170,28 @@ class DatabaseSource(SourceBase):
             raise Exception('No tables set for source')
         else:
             return self.data_entity.read_sql(self.query, **kwargs)
+
+
+@dataclass
+class PythonSource(SourceBase):
+    """
+    A generic source that executes arbitrary python code
+    to return any data that is required.
+    Returns a dataframe.
+    """
+    data_entity: PythonEntity | None
+    function: Callable[[PythonEntity], pd.DataFrame]
+
+    @module_function
+    def get(self, **kwargs) -> pd.DataFrame:
+        """
+        Calls the source function with the data entity
+        as the first argument and any kwargs after that
+        """
+        if self.data_entity is None:
+            raise Exception('No data entity set for source')
+        else:
+            return self.function(self.data_entity, **kwargs)
 
 
 @dataclass

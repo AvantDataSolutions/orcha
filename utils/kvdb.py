@@ -5,8 +5,6 @@ from datetime import datetime as dt, timedelta as td
 import threading
 from typing import Any, Literal, Type, TypeVar, Union
 
-from workspace.credentials import *
-
 print('Loading page:',__name__)
 
 T = TypeVar('T')

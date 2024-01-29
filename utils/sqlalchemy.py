@@ -1,25 +1,26 @@
 from __future__ import annotations
 
 import re
+from secrets import token_hex
 from typing import Literal
 
 import pandas as pd
 from sqlalchemy import (
-    MetaData, Table, Column, Index,
-    create_engine, inspect,
-    delete, insert as sqla_insert
+    TIMESTAMP, Column, DateTime, Index, MetaData, Table,
+    create_engine, delete
 )
-from sqlalchemy import DateTime, TIMESTAMP
+from sqlalchemy import insert as sqla_insert
+from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine.mock import MockConnection
 from sqlalchemy.engine.row import Row
-from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
+from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
-
 SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, MockConnection, sessionmaker]] = {}
+
 
 def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
     """
@@ -37,6 +38,7 @@ def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
     session = sessionmaker(bind=engine)
     return engine, session
 
+
 def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str):
     """
     Creates a connection to a specific database and schema,
@@ -52,6 +54,19 @@ def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str)
         return SCAFFOLD_CACHE[schema]
     else:
         raise Exception('Failed to create scaffold for: ' + schema)
+
+
+def mssql_partial_scaffold(user: str, passwd: str, server: str, db: str):
+    """
+    Creates a connection to a database without a schema or
+    declarative base object. Returns the engine and sessionmaker.
+    Postgres specific connection parameters are set here.
+    """
+    engine = create_engine(
+        f'mssql+pymssql://{user}:{passwd}@{server}/{db}'
+    )
+    session = sessionmaker(bind=engine)
+    return engine, session
 
 
 def sqlalchemy_build(base: DeclarativeMeta, engine: MockConnection, schema_name: str):
@@ -76,6 +91,7 @@ def sqlalchemy_build(base: DeclarativeMeta, engine: MockConnection, schema_name:
 
 
     base.metadata.create_all(engine, checkfirst=True) # type: ignore
+
 
 def sqlalchemy_build_schema(schema_name: str, engine: MockConnection):
     engine_inspect = inspect(engine)
@@ -125,6 +141,7 @@ def indexes_match(table1, table2):
 
     return True, ''
 
+
 def tables_match(table1, table2):
     """
     Checks if the column names and types of two SQLAlchemy tables match.
@@ -144,6 +161,7 @@ def tables_match(table1, table2):
         if str(column1.type) != str(column2.type):
             return False, f'Column {column1.name} type mismatch: {column1.type} != {column2.type}'
     return True, ''
+
 
 def create_table(
         schema_name: str,  table_name: str,
@@ -218,29 +236,56 @@ def mssql_upsert(
     ):
     if len(data) == 0:
         return None
-
     with session.begin() as db:
         table_inspect = inspect(table)
         if table_inspect is None:
             return None
 
+        temp_table = f'#temp_{token_hex(16)}'
+        chunksize = 2100 // len(data.columns)
         merge_on = [column.name for column in table_inspect.primary_key]
 
-        data.to_sql(name='#_temp', con=db.connection(), method='multi', chunksize=100, index=False)
+        if len(merge_on) == 0:
+            raise Exception('Cannot upsert on table with no Primary Key')
 
+        data.to_sql(
+            name=temp_table,
+            schema=f'[{table.schema}]',
+            con=db.connection(),
+            method='multi',
+            chunksize=chunksize,
+            index=False,
+        )
+
+        # Just in case the database collation is different to server collation
+        # and then the temp table won't merge with the target table
+        # we have to fix the collation of the temp table
+        db_name = table.metadata.bind.url.database
+        collation = db.execute(f'''
+            SELECT CAST(DATABASEPROPERTYEX('{db_name}', 'Collation') AS VARCHAR) AS DatabaseCollation;
+        ''').fetchone()['DatabaseCollation']
+
+        for column in data.columns:
+            column_type = table_inspect.columns[column].type
+            # only collate types called 'varchar'
+            if 'varchar' in str(column_type).lower():
+                db.execute(sql(f'''
+                    ALTER TABLE {temp_table}
+                    ALTER COLUMN [{column}] {column_type} COLLATE {collation}
+                '''))
         db.execute(sql(f'''
-            MERGE {table.schema}.{table.name} AS target
-            USING #_temp AS source
+            MERGE [{table.schema}].[{table.name}] WITH (HOLDLOCK, UPDLOCK) AS target
+            USING {temp_table} AS source
             ON (
-                {' AND '.join(f'source.{c} = target.{c}' for c in merge_on)}
+                {' AND '.join(f'source.[{c}] = target.[{c}]' for c in merge_on)}
             )
             WHEN NOT MATCHED BY TARGET THEN
-                INSERT ({', '.join(data.columns)})
-                VALUES ({', '.join(f'source.{c}' for c in data.columns)})
+                INSERT ({', '.join([f'[{c}]' for c in data.columns])})
+                VALUES ({', '.join(f'source.[{c}]' for c in data.columns)})
             WHEN MATCHED THEN UPDATE SET
-                {', '.join(f'target.{c} = source.{c}' for c in data.columns)};
+                {', '.join(f'target.[{c}] = source.[{c}]' for c in data.columns)};
             '''))
-        db.execute(sql('DROP TABLE #_temp'))
+        db.execute(sql(f'DROP TABLE {temp_table}'))
 
 
 def _sanitize_sql(input_str: str):

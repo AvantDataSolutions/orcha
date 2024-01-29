@@ -13,12 +13,12 @@ class TrimWhitespaceTransform(TransformBase):
     @classmethod
     @module_function
     def transform(cls, data: pd.DataFrame) -> pd.DataFrame:
-        return data.map(lambda x: x.strip() if isinstance(x, str) else x)
+        return data.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
 
 class ConvertDateTimeToStringTransform(TransformBase):
     """
-    Convert all datetimes to strings
+    Converts all datetimes to strings in the given format
     """
     module_idk: str = 'datetime_to_string_transform'
     name: str = 'datetime_to_string_transform'

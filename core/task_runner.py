@@ -52,6 +52,11 @@ class TaskRunner():
 
     @staticmethod
     def process_task(task: TaskItem):
+        def _update_run_times(run: RunItem):
+            current_run_times = kvdb.get('current_run_times', list, 'local')
+            if current_run_times != None:
+                new_output = {'run_times': current_run_times}
+                run.set_output(new_output, merge=True)
         # Set the task as active so the scheduler doesn't disable it
         task.update_active()
         # Run in a second thread to tick over the active time
@@ -61,6 +66,7 @@ class TaskRunner():
         running_dict = {}
         def _refresh_active(run: RunItem):
             while running_dict[run.run_idk]:
+                _update_run_times(run)
                 run.update_active()
                 time.sleep(30)
 
@@ -73,6 +79,8 @@ class TaskRunner():
         #     return
         # queued_runs = [last_run]
         for run in queued_runs:
+            # Clear any existing runtimes in the current thread
+            kvdb.store('local', 'current_run_times', [])
             # Set the run as started so when we update the active time it
             # has the version that has already started otherwise it will
             # set the active time on the unstarted version of the run
@@ -85,16 +93,10 @@ class TaskRunner():
                 # print('Running task:', task.task_idk)
                 # Run the function with the config provided in the run itself
                 # this is to allow for manual runs to have different configs
-
-                # Clear any existing runtimes in the current thread
-                kvdb.store('local', 'current_run_times', [])
                 task.task_function(task, run, run.config)
-                # then fetch back any runtimes that were stored by modules
-                current_run_times = kvdb.get('current_run_times', list, 'local')
-                if current_run_times is None:
-                    raise Exception('Task run times not found')
-                new_output = {'run_times': current_run_times}
-                run.set_output(new_output, merge=True)
+                # When complete, also update run times
+                _update_run_times(run)
+                run.set_success()
                 running_dict[run.run_idk] = False
             except Exception as e:
                 # raise e
