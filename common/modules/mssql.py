@@ -55,7 +55,7 @@ class MssqlEntity(DatabaseEntity):
             raise Exception('No engine set')
         elif if_exists == 'upsert':
             return mssql_upsert(
-                session=self.sessionmaker,
+                s_maker=self.sessionmaker,
                 table=table,
                 data=data
             )

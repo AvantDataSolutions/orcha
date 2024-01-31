@@ -12,14 +12,14 @@ from sqlalchemy import (
 from sqlalchemy import insert as sqla_insert
 from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.engine.mock import MockConnection
+from sqlalchemy.engine import Engine
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
-SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, MockConnection, sessionmaker]] = {}
+SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, Engine, sessionmaker[Session]]] = {}
 
 
 def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
@@ -47,7 +47,7 @@ def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str)
     """
     if schema not in SCAFFOLD_CACHE:
         engine, session = postgres_partial_scaffold(user, passwd, server, db)
-        Base = declarative_base(metadata=MetaData(schema=schema, bind=engine))
+        Base = declarative_base(metadata=MetaData(schema=schema))
 
         SCAFFOLD_CACHE[schema] = (Base, engine, session)
     if schema in SCAFFOLD_CACHE:
@@ -69,7 +69,7 @@ def mssql_partial_scaffold(user: str, passwd: str, server: str, db: str):
     return engine, session
 
 
-def sqlalchemy_build(base: DeclarativeMeta, engine: MockConnection, schema_name: str):
+def sqlalchemy_build(base: DeclarativeMeta, engine: Engine, schema_name: str):
     """
     General build function for SQLAlchemy schema and tables.
     Uses the provided engine so is database agnostic.
@@ -93,21 +93,22 @@ def sqlalchemy_build(base: DeclarativeMeta, engine: MockConnection, schema_name:
     base.metadata.create_all(engine, checkfirst=True) # type: ignore
 
 
-def sqlalchemy_build_schema(schema_name: str, engine: MockConnection):
+def sqlalchemy_build_schema(schema_name: str, engine: Engine):
     engine_inspect = inspect(engine)
     if engine_inspect is None:
         raise Exception('Engine inspect failed for schema: ' + schema_name)
     if schema_name not in engine_inspect.get_schema_names():
-        engine.execute(CreateSchema(schema_name))
+        with engine.begin() as db:
+            db.execute(CreateSchema(schema_name))
 
 
-def sqlalchemy_build_table(table: Table, engine: MockConnection):
+def sqlalchemy_build_table(table: Table, engine: Engine):
     engine_inspect = inspect(engine)
     if engine_inspect is None:
         raise Exception('Engine inspect failed for table: ' + table.name)
     table.create(engine, checkfirst=True) # type: ignore
     # If the table exists, check that the columns match
-    existing_table = Table(table.name, MetaData(schema=table.schema, bind=engine), autoload=True)
+    existing_table = Table(table.name, MetaData(schema=table.schema), autoload_with=engine)
     table_match, match_str = tables_match(table, existing_table)
     if not table_match:
         raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
@@ -165,7 +166,7 @@ def tables_match(table1, table2):
 
 def create_table(
         schema_name: str,  table_name: str,
-        engine: MockConnection,
+        engine: Engine,
         columns: list[Column], indexes: list[Index] = [],
         build_table: bool = True
     ):
@@ -173,7 +174,7 @@ def create_table(
     Returns an SQLAlchemy Table object with the given name, column definitions.
     Optionally can build this table in the database or not.
     """
-    metadata = MetaData(schema=schema_name, bind=engine)
+    metadata = MetaData(schema=schema_name)
     table = Table(
         table_name,
         metadata,
@@ -231,12 +232,13 @@ def postgres_upsert(
 
 def mssql_upsert(
         data: pd.DataFrame,
-        session: sessionmaker,
+        s_maker: sessionmaker[Session],
         table: Table
     ):
     if len(data) == 0:
         return None
-    with session.begin() as db:
+    with s_maker.begin() as session:
+        conn = session.connection()
         table_inspect = inspect(table)
         if table_inspect is None:
             return None
@@ -251,7 +253,7 @@ def mssql_upsert(
         data.to_sql(
             name=temp_table,
             schema=f'[{table.schema}]',
-            con=db.connection(),
+            con=conn,
             method='multi',
             chunksize=chunksize,
             index=False,
@@ -260,20 +262,23 @@ def mssql_upsert(
         # Just in case the database collation is different to server collation
         # and then the temp table won't merge with the target table
         # we have to fix the collation of the temp table
-        db_name = table.metadata.bind.url.database
-        collation = db.execute(f'''
+        db_name = conn.engine.url.database
+        collation = session.execute(sql(f'''
             SELECT CAST(DATABASEPROPERTYEX('{db_name}', 'Collation') AS VARCHAR) AS DatabaseCollation;
-        ''').fetchone()['DatabaseCollation']
+        ''')).fetchone()
+        if collation is None:
+            raise Exception('Failed to get database collation')
+        collation = collation[0]['DatabaseCollation']
 
         for column in data.columns:
             column_type = table_inspect.columns[column].type
             # only collate types called 'varchar'
             if 'varchar' in str(column_type).lower():
-                db.execute(sql(f'''
+                session.execute(sql(f'''
                     ALTER TABLE {temp_table}
                     ALTER COLUMN [{column}] {column_type} COLLATE {collation}
                 '''))
-        db.execute(sql(f'''
+        session.execute(sql(f'''
             MERGE [{table.schema}].[{table.name}] WITH (HOLDLOCK, UPDLOCK) AS target
             USING {temp_table} AS source
             ON (
@@ -285,20 +290,44 @@ def mssql_upsert(
             WHEN MATCHED THEN UPDATE SET
                 {', '.join(f'target.[{c}] = source.[{c}]' for c in data.columns)};
             '''))
-        db.execute(sql(f'DROP TABLE {temp_table}'))
+        session.execute(sql(f'DROP TABLE {temp_table}'))
 
 
-def _sanitize_sql(input_str: str):
-    # Remove any non-alphanumeric characters except for spaces
-    sanitized_str = re.sub(r'[^\w\s]', '', input_str)
-    # Replace any spaces with underscores
-    sanitized_str = sanitized_str.replace(' ', '_')
+def _sanitize_sql(input_str: str) -> str:
+    # drop ; and --
+    sanitized_str = re.sub(r';|--', '', input_str)
+    # If the string has changed, call the function again
+    if sanitized_str != input_str:
+        return _sanitize_sql(sanitized_str)
     # Return the sanitized string
     return sanitized_str
 
 
+def _split_table_name(table_name: str) -> tuple[str, str]:
+    if '.' not in table_name:
+        raise Exception('Table name must be in the format: schema.table')
+    if '].[' in table_name:
+        split = table_name.split('].[')
+        split[0] = split[0] + ']'
+        split[1] = '[' + split[1]
+    elif '].' in table_name:
+        split = table_name.split('].')
+        split[0] = split[0] + ']'
+    elif '.[' in table_name:
+        split = table_name.split('.[')
+        split[1] = '[' + split[1]
+    else:
+        split = table_name.split('.')
+    if len(split) != 2:
+        raise Exception('Table name must be in the format: schema.table')
+
+    return (f'{split[0]}', f'{split[1]}')
+
+
 def get(
-        session, table, select_columns: list | Literal['*'],
+        s_maker: sessionmaker[Session],
+        table: str,
+        select_columns: list | Literal['*'],
         match_pairs: list[tuple[str, str, str]] = [],
         match_type: Literal['AND', 'OR'] = 'AND'
     ) -> list[Row]:
@@ -324,8 +353,8 @@ def get(
         select_columns = ', '.join([_sanitize_sql(c) for c in select_columns])  # type: ignore
 
     # Just make sure nothing funny was passed through accidentally
-    table, schema = table.split('.')
-    table = _sanitize_sql(table)
+    schema, table_name = _split_table_name(table)
+    table_name = _sanitize_sql(table_name)
     schema = _sanitize_sql(schema)
     match_pairs = [(col, compr, test) for col, compr, test in match_pairs]
 
@@ -340,22 +369,24 @@ def get(
 
     q_str = f'''
         SELECT {select_columns}
-        FROM {table}.{schema}
+        FROM {schema}.{table_name}
         {f'WHERE {pairs_query}' if pairs_query else ''}
     '''
-    with session.begin() as tx:
+    with s_maker.begin() as session:
         # only keep the first and last values of each key
         mp_sql_params = {f'{i}_{k}': v for i, k, c, v in mp_indexed}
         # print(sql(q_str).bindparams(**mp_sql_params).compile(
         #     dialect=postgresql.dialect(),
         #     compile_kwargs={"literal_binds": True}
         # ))
-        return tx.execute(sql(q_str).bindparams(**mp_sql_params)).all()
+        return list(session.execute(sql(q_str).bindparams(**mp_sql_params)).all())
 
 
 
 def get_latest_versions(
-        session, table, key_columns: list, version_column: str,
+        s_maker: sessionmaker[Session],
+        table: str,
+        key_columns: list, version_column: str,
         select_columns: list | Literal['*'], match_pairs: list[tuple[str, str, str]] = [],
         match_type: Literal['AND', 'OR'] = 'AND'
     ) -> list[Row]:
@@ -403,7 +434,7 @@ def get_latest_versions(
         {f'WHERE {pairs_query}' if pairs_query else ''}
         ORDER BY {', '.join(key_columns)}, {version_column} DESC
     '''
-    with session.begin() as tx:
+    with s_maker.begin() as tx:
         # only keep the first and last values of each key
         mp_sql_params = {f'{i}_{k}': v for i, k, c, v in mp_indexed}
         # print(sql(q_str).bindparams(**mp_sql_params).compile(
@@ -412,4 +443,4 @@ def get_latest_versions(
         # ))
         data = tx.execute(sql(q_str).bindparams(**mp_sql_params)).all()
 
-    return data
+    return list(data)

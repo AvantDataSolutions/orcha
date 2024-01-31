@@ -11,8 +11,8 @@ from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSON as PG_JSON
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.sql import text as sql
-from sqlalchemy.engine.mock import MockConnection
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import sessionmaker, Session
 
 from orcha.utils.sqlalchemy import (get, get_latest_versions, sqlalchemy_build,
                                     postgres_scaffold)
@@ -25,8 +25,8 @@ is_initialised = False
 ORCHA_SCHEMA = 'orcha'
 
 Base: DeclarativeMeta
-engine: MockConnection
-Session: sessionmaker
+engine: Engine
+s_maker: sessionmaker[Session]
 
 _register_task_with_runner: Callable | None = None
 
@@ -40,9 +40,9 @@ def setup_sqlalchemy(
         orcha_user: str, orcha_pass: str,
         orcha_server: str, orcha_db: str
     ):
-    global is_initialised, Base, engine, Session, TaskRecord, RunRecord
+    global is_initialised, Base, engine, s_maker, TaskRecord, RunRecord
     is_initialised = True
-    Base, engine, Session = postgres_scaffold(
+    Base, engine, s_maker = postgres_scaffold(
         user=orcha_user,
         passwd=orcha_pass,
         server=orcha_server,
@@ -82,7 +82,7 @@ def setup_sqlalchemy(
     sqlalchemy_build(Base, engine, ORCHA_SCHEMA)
 
     # Critical index for the performace of fetching runs
-    with Session.begin() as tx:
+    with s_maker.begin() as tx:
         tx.execute(sql('''
             --DROP INDEX IF EXISTS orcha.idx_orcha_runs_task_scheduled;
             CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_scheduled
@@ -176,7 +176,7 @@ class TaskItem():
         # the database, then convert them to a list of ScheduleSet objects
         sets = []
         for schedule_set in schedule_sets:
-            if type(schedule_set) == dict:
+            if isinstance(schedule_set, dict):
                 sets.append(ScheduleSet.create_with_key(**schedule_set))
             else:
                 sets.append(schedule_set)
@@ -194,26 +194,25 @@ class TaskItem():
     @staticmethod
     def get_all() -> list[TaskItem]:
         data = get_latest_versions(
-            session=Session,
+            s_maker=s_maker,
             table='orcha.tasks',
             key_columns=['task_idk'],
             version_column='version',
             select_columns='*'
         )
-        return [TaskItem(**x) for x in data]
+        return [TaskItem(**(x._asdict())) for x in data]
 
     @staticmethod
     def get(task_idk: str) -> TaskItem | None:
         data = get_latest_versions(
-            session=Session,
+            s_maker=s_maker,
             table='orcha.tasks',
             key_columns=['task_idk'],
             version_column='version',
             select_columns='*',
             match_pairs=[('task_idk', '=', task_idk)]
         )
-        tasks = [TaskItem(**x) for x in data]
-
+        tasks = [TaskItem(**(x._asdict())) for x in data]
         if len(tasks) == 0:
             return None
         if len(tasks) > 1:
@@ -294,7 +293,7 @@ class TaskItem():
 
 
     def _update_db(self) -> None:
-        with Session.begin() as session:
+        with s_maker.begin() as session:
             session.merge(TaskRecord(
                 task_idk = self.task_idk,
                 version = self.version,
@@ -504,12 +503,12 @@ class RunItem():
             pairs.append(('set_idf', '=', schedule.set_idk))
 
         data = get(
-            session = Session,
+            s_maker = s_maker,
             table='orcha.runs',
             select_columns='*',
             match_pairs=pairs,
         )
-        return [RunItem(task, **x) for x in data]
+        return [RunItem(task, **(x._asdict())) for x in data]
 
     @staticmethod
     def get_all_queued(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
@@ -521,12 +520,12 @@ class RunItem():
         if schedule is not None:
             pairs.append(('set_idf', '=', schedule.set_idk))
         data = get(
-            session = Session,
+            s_maker = s_maker,
             table='orcha.runs',
             select_columns='*',
             match_pairs=pairs,
         )
-        return [RunItem(task, **x) for x in data]
+        return [RunItem(task, **(x._asdict())) for x in data]
 
     @staticmethod
     def get_latest(
@@ -562,7 +561,7 @@ class RunItem():
     @staticmethod
     def get_by_id(run_id: str, task: TaskItem | None = None) -> RunItem | None:
         data = get(
-            session = Session,
+            s_maker = s_maker,
             table='orcha.runs',
             select_columns='*',
             match_pairs=[
@@ -571,18 +570,19 @@ class RunItem():
         )
         if len(data) == 0:
             return None
-        row_dict = dict(data[0])
-        task_idf = row_dict.get('task_idf', None)
+        task_idf = None
+        if hasattr(data[0], 'task_idf'):
+            task_idf = data[0].task_idf
         if task is None:
             if task_idf is None:
                 raise Exception('task_idf not found in run data')
             task = TaskItem.get(task_idf)
             if task is None:
                 raise Exception('Task not found')
-        return RunItem(task, **data[0])
+        return RunItem(task, **(data[0]._asdict()))
 
     def _update_db(self):
-        with Session.begin() as session:
+        with s_maker.begin() as session:
             session.merge(RunRecord(
                 run_idk = self.run_idk,
                 task_idf = self.task_idf,

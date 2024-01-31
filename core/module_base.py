@@ -9,8 +9,8 @@ import pandas as pd
 from orcha.utils import kvdb
 from orcha.utils.sqlalchemy import create_table
 from sqlalchemy import Column, Index, Table
-from sqlalchemy.engine.mock import MockConnection
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.sql import text as sql
 
 
@@ -68,17 +68,19 @@ class DatabaseEntity(EntityBase):
     host: str
     port: int
     database_name: str
-    engine: MockConnection | None = None
-    sessionmaker: sessionmaker | None = None
+    engine: Engine | None = None
+    sessionmaker: sessionmaker[Session] | None = None
     _tables: list[Table] = field(default_factory=list)
 
     def run_query(self, query: str, bindparams: dict, return_values: bool):
         if self.sessionmaker is None:
             raise Exception('No sessionmaker set')
         with self.sessionmaker.begin() as db:
-            data = db.execute(sql(query).bindparams(**bindparams))
+            result = db.execute(sql(query).bindparams(**bindparams))
             if return_values:
-                return pd.DataFrame(data.fetchall(), columns=data.keys())
+                return pd.DataFrame(
+                    [list(map(str, row)) for row in result.all()]
+                )
             else:
                 return None
 
@@ -166,7 +168,7 @@ class DatabaseSource(SourceBase):
     def get(self, **kwargs) -> pd.DataFrame:
         if self.data_entity is None:
             raise Exception('No data entity set for source')
-        elif self.tables == None or self.tables == []:
+        elif self.tables is None or self.tables == []:
             raise Exception('No tables set for source')
         else:
             return self.data_entity.read_sql(self.query, **kwargs)
