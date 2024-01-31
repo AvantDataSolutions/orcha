@@ -159,7 +159,9 @@ def tables_match(table1, table2):
             continue
         if isinstance(column2.type, DateTime) and isinstance(column1.type, TIMESTAMP):
             continue
-        if str(column1.type) != str(column2.type):
+        # We're only checking the type class, which excludes
+        # other details such as collation, length, etc.
+        if column1.type.__class__ != column2.type.__class__:
             return False, f'Column {column1.name} type mismatch: {column1.type} != {column2.type}'
     return True, ''
 
@@ -266,9 +268,10 @@ def mssql_upsert(
         collation = session.execute(sql(f'''
             SELECT CAST(DATABASEPROPERTYEX('{db_name}', 'Collation') AS VARCHAR) AS DatabaseCollation;
         ''')).fetchone()
-        if collation is None:
+        if collation is None or not hasattr(collation, 'DatabaseCollation'):
             raise Exception('Failed to get database collation')
-        collation = collation[0]['DatabaseCollation']
+
+        collation = collation.DatabaseCollation
 
         for column in data.columns:
             column_type = table_inspect.columns[column].type
@@ -279,7 +282,7 @@ def mssql_upsert(
                     ALTER COLUMN [{column}] {column_type} COLLATE {collation}
                 '''))
         session.execute(sql(f'''
-            MERGE [{table.schema}].[{table.name}] WITH (HOLDLOCK, UPDLOCK) AS target
+            MERGE {table.schema}.{table.name} WITH (HOLDLOCK, UPDLOCK) AS target
             USING {temp_table} AS source
             ON (
                 {' AND '.join(f'source.[{c}] = target.[{c}]' for c in merge_on)}
