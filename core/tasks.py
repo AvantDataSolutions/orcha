@@ -353,6 +353,12 @@ class TaskItem():
     def get_last_run(self, schedule: ScheduleSet) -> RunItem | None:
         return RunItem.get_latest(task=self, schedule=schedule)
 
+    def get_next_scheduled_time(self, schedule: ScheduleSet | None = None) -> dt:
+        if schedule is None:
+            schedule = self.schedule_sets[0]
+        cron_schedule = schedule.cron_schedule
+        return croniter(cron_schedule, dt.now()).get_next(dt)
+
     def is_run_due(self, schedule: ScheduleSet):
         is_due, _ = self.is_run_due_with_last(schedule)
         return is_due
