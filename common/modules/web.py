@@ -70,14 +70,22 @@ class RestSource(ModuleBase):
             else:
                 cur_cookies = None
 
+            if isinstance(self.request_data, str):
+                data = self.request_data
+            elif isinstance(self.request_data, dict):
+                data = json.dumps(self.request_data)
+            else:
+                data = None
+
             response = requests.request(
                 method=self.request_type,
                 url=url_with_query,
                 headers=cur_headers,
                 cookies=cur_cookies,
-                data=json.dumps(self.request_data),
+                data=data,
                 **kwargs
             )
+
             if response.status_code != 200:
                 raise Exception(f'Response status code is not 200: {response.status_code}')
             if self.postprocess is not None:
