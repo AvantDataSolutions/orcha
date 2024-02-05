@@ -25,7 +25,7 @@ class RestSource(ModuleBase):
     sub_path: str | None
     query_params: dict | None
     request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
-    request_data: dict | None = None
+    request_data: dict | str | None = None
     postprocess: Callable[[requests.Response], pd.DataFrame] | None = None
 
     @module_function
