@@ -159,9 +159,9 @@ def tables_match(table1, table2):
             continue
         if isinstance(column2.type, DateTime) and isinstance(column1.type, TIMESTAMP):
             continue
-        # We're only checking the type class, which excludes
-        # other details such as collation, length, etc.
-        if column1.type.__class__ != column2.type.__class__:
+        # Make sure column types match exactly, this includes length,
+        # precision, collation, etc.
+        if column1.type != column2.type:
             return False, f'Column {column1.name} type mismatch: {column1.type} != {column2.type}'
     return True, ''
 
