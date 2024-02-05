@@ -100,10 +100,7 @@ def setup_sqlalchemy(
 """
 
 
-class TaskStatus():
-    ENABLED = 'enabled'
-    DISABLED = 'disabled'
-    DELETED = 'deleted'
+TaskStatus = Literal['enabled', 'disabled', 'inactive', 'deleted']
 
 
 class TaskType():
@@ -163,13 +160,13 @@ class TaskItem():
     schedule_sets: list[ScheduleSet]
     thread_group: str
     last_active: dt
-    status: str
+    status: TaskStatus
     notes: str | None = None
 
     def __init__(
             self, task_idk: str, version: dt, task_metadata: dict, name: str,
             description: str, schedule_sets: list[ScheduleSet] | list[dict],
-            thread_group: str, last_active: dt, status: str,
+            thread_group: str, last_active: dt, status: TaskStatus,
             notes: str | None = None
         ) -> None:
         # If the schedule sets are passed as a dict, most likely from
@@ -224,7 +221,7 @@ class TaskItem():
             cls, task_idk: str, name: str, description: str,
             schedule_sets: list[ScheduleSet], thread_group,
             task_function: Callable[[TaskItem | None, RunItem | None, dict], None],
-            status: str = TaskStatus.ENABLED,
+            status: TaskStatus = 'enabled',
             task_metadata: dict = {},
             register_with_runner: bool = True
         ):
@@ -307,7 +304,7 @@ class TaskItem():
                 notes = self.notes
             ))
 
-    def set_status(self, status: str, notes: str) -> None:
+    def set_status(self, status: TaskStatus, notes: str) -> None:
         """
         Used to enable/disable a task. This is used to prevent the scheduler
         from queuing runs for the task.

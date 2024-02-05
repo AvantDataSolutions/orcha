@@ -1,8 +1,9 @@
+from __future__ import annotations
 
 import threading
 import time
 
-from orcha.core.tasks import TaskItem, TaskStatus, RunStatus
+from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
 
 orcha_log = LogManager('orcha')
@@ -19,7 +20,20 @@ class Scheduler:
     fail_unstarted_runs: bool = True
     disable_stale_tasks: bool = True
 
-    def __init__(self, fail_unstarted_runs: bool = True, disable_stale_tasks: bool = True):
+    def __init__(
+            self,
+            fail_unstarted_runs: bool = True,
+            disable_stale_tasks: bool = True,
+        ):
+        """
+        Initialise the scheduler with the given settings. The scheduler creates
+        threads and creates runs in the database for tasks that are due to run.
+        :param fail_unstarted_runs: If True, then if a run is due, but the last
+        run didn't start, then the last run will be set to failed before a new
+        run is created.
+        :param disable_stale_tasks: If True, then if a task hasn't been active
+        since the last run, then the task will be set to inactive.
+        """
         self.is_running = False
         self.thread = None
         self.fail_unstarted_runs = fail_unstarted_runs
@@ -52,14 +66,16 @@ class Scheduler:
 
             for task in self.all_tasks:
                 for schedule in task.schedule_sets:
-                    if task.status == TaskStatus.DISABLED:
+                    # Only check enabled tasks (e.g. no disabled/inactive tasks)
+                    if task.status != 'enabled':
                         continue
                     is_due, last_run =  task.is_run_due_with_last(schedule)
                     if is_due:
+                        # TODO Check for old queued/running runs and set them to failed
                         if self.fail_unstarted_runs and last_run is not None:
-                            # If the last run didn't start, and it's not already
-                            # failed, set it to failed before we create a new run
-                            if last_run.start_time is None and last_run.status != RunStatus.FAILED:
+                            # If the last run is still queued then set it to failed
+                            # before we create a new run
+                            if last_run.start_time is None and (last_run.status == RunStatus.QUEUED):
                                 last_run.set_failed(
                                     output={
                                         'message': 'Previous run failed to start'
@@ -71,7 +87,7 @@ class Scheduler:
                             # Tasks should be checked every 5s, and runs at most frequent, every 1 minute
                             # so a task should have been active many times since the last run
                             if task.last_active < last_run.scheduled_time:
-                                task.set_status('disabled', 'Task disabled due to inactivity')
+                                task.set_status('inactive', 'Task has been inactive since last scheduled run')
                                 continue
                         # print('Run due for task:', task.task_idk)
                         run = task.schedule_run(schedule)
