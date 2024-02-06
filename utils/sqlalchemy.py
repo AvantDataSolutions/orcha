@@ -274,10 +274,19 @@ def mssql_upsert(
 
         collation = collation.DatabaseCollation
 
+        def _needs_collation(column_type: str) -> bool:
+            collatable_types = ['varchar', 'char', 'text', 'nchar', 'nvarchar', 'ntext']
+            if 'collate' in column_type.lower():
+                return False
+            for collatable_type in collatable_types:
+                if collatable_type in column_type.lower():
+                    return True
+            return False
+
         for column in data.columns:
-            column_type = table_inspect.columns[column].type
-            # only collate types called 'varchar'
-            if 'varchar' in str(column_type).lower():
+            column_type = str(table_inspect.columns[column].type)
+            # Mostly to handle cases where server collation != db collation
+            if _needs_collation(column_type):
                 session.execute(sql(f'''
                     ALTER TABLE {temp_table}
                     ALTER COLUMN [{column}] {column_type} COLLATE {collation}
