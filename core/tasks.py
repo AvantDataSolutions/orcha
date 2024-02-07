@@ -387,6 +387,39 @@ class TaskItem():
             schedule=None
         )
 
+    def prune_runs(self, max_age: td | None) -> int:
+        """
+        Prunes runs that are older than max_age and keeps the most recent
+        max_count runs. This is useful for keeping the database size down.
+        Returns the number of runs deleted.
+        """
+        if max_age is None:
+            return 0
+        with s_maker.begin() as session:
+            query = '''
+                WITH deleted AS (
+                    DELETE
+                    FROM
+                        orcha.runs
+                    WHERE
+                        task_idf = :task_idf
+                        AND scheduled_time < :date_cutoff
+                    RETURNING *
+                )
+                SELECT COUNT(*) AS "del_count" FROM deleted
+            '''
+
+            deleted_rows = session.execute(sql(query), {
+                'task_idf': self.task_idk,
+                'date_cutoff': dt.utcnow() - max_age
+            }).all()
+
+            if len(deleted_rows) == 0:
+                raise Exception('Prune runs failed')
+            if not hasattr(deleted_rows[0], 'del_count'):
+                raise Exception('Prune runs failed')
+            return deleted_rows[0].del_count
+
     def task_function(self, task: TaskItem | None, run: RunItem | None, config: dict) -> None:
         """
         The Orcha task runner will pass the current run instance
@@ -583,6 +616,13 @@ class RunItem():
             if task is None:
                 raise Exception('Task not found')
         return RunItem(task, **(data[0]._asdict()))
+
+    def delete(self) -> None:
+        with s_maker.begin() as session:
+            session.execute(sql('''
+                DELETE FROM orcha.runs
+                WHERE run_idk = :run_idk
+            '''), {'run_idk': self.run_idk})
 
     def _update_db(self):
         with s_maker.begin() as session:

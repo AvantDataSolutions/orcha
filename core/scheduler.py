@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import dataclass
+from datetime import timedelta as td
 
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
@@ -12,39 +14,83 @@ orcha_log = LogManager('orcha')
 # TODO https://docs.docker.com/engine/reference/commandline/stop/
 
 
+@dataclass
+class OrchaSchedulerConfig:
+        """
+        This class is used to store the configuration for the orcha scheduler.
+
+        ### Options
+        - task_refresh_interval(float = 60): The interval in seconds at which the scheduler will reload the task list from the database.
+        - fail_unstarted_runs(bool = True): If True, then when a run is due, but the last run didn't start, then the last run will be set to failed before a new run is created.
+        - disable_stale_tasks(bool = True): If True, then when a task hasn't been active since the last run, then the task will be set to inactive.
+        - prune_runs_max_age(td | None = 180): The maximum age of runs to keep in the database. If None, then no runs will be pruned.
+        - prune_logs_max_age(td | None = 180): The maximum age of logs to keep in the database. If None, then no logs will be pruned.
+        - prune_interval(float = 3600): The interval in seconds at which the scheduler will prune the runs and logs.
+        """
+        task_refresh_interval: float = 60
+        fail_unstarted_runs: bool = True
+        disable_stale_tasks: bool = True
+        prune_runs_max_age: td | None = td(days=180)
+        prune_logs_max_age: td | None = td(days=180)
+        prune_interval: float = 3600
+
+
 class Scheduler:
 
     all_tasks: list[TaskItem] = []
     last_refresh: float = 0
     task_refresh_interval: float
-    fail_unstarted_runs: bool = True
-    disable_stale_tasks: bool = True
+    fail_unstarted_runs: bool
+    disable_stale_tasks: bool
+    prune_runs_max_age: td | None
+    prune_logs_max_age: td | None
+    prune_interval: float
 
     def __init__(
             self,
-            fail_unstarted_runs: bool = True,
-            disable_stale_tasks: bool = True,
+            config: OrchaSchedulerConfig = OrchaSchedulerConfig(),
+            fail_unstarted_runs: bool | None = None,
+            disable_stale_tasks: bool | None = None,
         ):
         """
         Initialise the scheduler with the given settings. The scheduler creates
         threads and creates runs in the database for tasks that are due to run.
-        :param fail_unstarted_runs: If True, then if a run is due, but the last
+        ### Args
+        - config(OrchaSchedulerConfig | None = None): The configuration for the scheduler.
+        - fail_unstarted_runs: If True, then if a run is due, but the last
         run didn't start, then the last run will be set to failed before a new
         run is created.
-        :param disable_stale_tasks: If True, then if a task hasn't been active
+        - disable_stale_tasks: If True, then if a task hasn't been active
         since the last run, then the task will be set to inactive.
         """
         self.is_running = False
         self.thread = None
-        self.fail_unstarted_runs = fail_unstarted_runs
-        self.disable_stale_tasks = disable_stale_tasks
+
+        self.task_refresh_interval = config.task_refresh_interval
+        self.fail_unstarted_runs = config.fail_unstarted_runs
+        self.disable_stale_tasks = config.disable_stale_tasks
+        self.prune_runs_max_age = config.prune_runs_max_age
+        self.prune_logs_max_age = config.prune_logs_max_age
+        self.prune_interval = config.prune_interval
+
+        # Overwrite the config with the deprecated parameters
+        if fail_unstarted_runs is not None:
+            self.fail_unstarted_runs = fail_unstarted_runs
+            raise DeprecationWarning('The fail_unstarted_runs parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
+        if disable_stale_tasks is not None:
+            self.disable_stale_tasks = disable_stale_tasks
+            raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
 
     def start(self, refresh_interval: float = 60):
         orcha_log.add_entry('scheduler', 'status', 'Starting', {})
         self.is_running = True
+        # Start the run scheduling thread
         self.task_refresh_interval = refresh_interval
         self.thread = threading.Thread(target=self._run)
         self.thread.start()
+        # Start the run pruning thread
+        prune_thread = threading.Thread(target=self._prune_runs_and_logs)
+        prune_thread.start()
         return self.thread
 
     def stop(self):
@@ -53,13 +99,33 @@ class Scheduler:
         if self.thread is not None:
             self.thread.join()
 
+    def _prune_runs_and_logs(self):
+        while self.is_running:
+            time.sleep(self.prune_interval)
+            if self.prune_runs_max_age is not None:
+                for task in self.all_tasks:
+                    del_count = task.prune_runs(self.prune_runs_max_age)
+                    orcha_log.add_entry('scheduler', 'prune_runs', 'Pruning runs', {
+                        'task_id': task.task_idk,
+                        'max_age': str(self.prune_runs_max_age),
+                        'deleted_count': del_count
+                    })
+            if self.prune_logs_max_age is not None:
+                del_count = orcha_log.prune(self.prune_logs_max_age)
+                orcha_log.add_entry('scheduler', 'prune_logs', 'Pruning logs', {
+                    'max_age': str(self.prune_logs_max_age),
+                    'deleted_count': del_count
+                })
+
     def _run(self):
         while self.is_running:
             time.sleep(15)
             if self.last_refresh < time.time() - self.task_refresh_interval:
-                orcha_log.add_entry('scheduler', 'run', 'Refreshing tasks', {})
-                self.last_refresh = time.time()
                 self.all_tasks = TaskItem.get_all()
+                orcha_log.add_entry('scheduler', 'run', 'Refreshing tasks', {
+                    'task_count': len(self.all_tasks)
+                })
+                self.last_refresh = time.time()
             elif len(self.all_tasks) == 0:
                 self.last_refresh = time.time()
                 self.all_tasks = TaskItem.get_all()

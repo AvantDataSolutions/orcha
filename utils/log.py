@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta as td
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, String
@@ -61,3 +61,14 @@ class LogManager:
                 text = text,
                 json = json
             ))
+
+    def prune(self, max_age: td | None = None):
+        """
+        Prune the logs in the database. Removes no logs if max_age is None.
+        """
+        if max_age is None:
+            return 0
+        with Session.begin() as db:
+            return db.query(LogEntryRecord).filter(
+                LogEntryRecord.created < dt.utcnow() - max_age
+            ).delete()
