@@ -55,6 +55,7 @@ def setup_sqlalchemy(
         task_idk = Column(String, primary_key=True)
         version = Column(DateTime(timezone=False), primary_key=True)
         task_metadata = Column(PG_JSON)
+        task_tags = Column(PG_JSON)
         name = Column(String)
         description = Column(String)
         schedule_sets = Column(PG_JSON)
@@ -103,12 +104,6 @@ def setup_sqlalchemy(
 TaskStatus = Literal['enabled', 'disabled', 'inactive', 'deleted']
 
 
-class TaskType():
-    ETL = 'etl'
-    RETL = 'retl'
-    QUALITY = 'quality'
-
-
 @dataclass
 class ScheduleSet():
     set_idk: str | None
@@ -155,6 +150,7 @@ class TaskItem():
     task_idk: str
     version: dt
     task_metadata: dict
+    task_tags: list[str]
     name: str
     description: str
     schedule_sets: list[ScheduleSet]
@@ -167,7 +163,7 @@ class TaskItem():
             self, task_idk: str, version: dt, task_metadata: dict, name: str,
             description: str, schedule_sets: list[ScheduleSet] | list[dict],
             thread_group: str, last_active: dt, status: TaskStatus,
-            notes: str | None = None
+            task_tags: list[str], notes: str | None = None
         ) -> None:
         # If the schedule sets are passed as a dict, most likely from
         # the database, then convert them to a list of ScheduleSet objects
@@ -180,6 +176,7 @@ class TaskItem():
         self.task_idk = task_idk
         self.version = version
         self.task_metadata = task_metadata
+        self.task_tags = task_tags
         self.name = name
         self.description = description
         self.schedule_sets = sets
@@ -219,10 +216,12 @@ class TaskItem():
     @classmethod
     def create(
             cls, task_idk: str, name: str, description: str,
-            schedule_sets: list[ScheduleSet], thread_group,
+            schedule_sets: list[ScheduleSet],
+            thread_group: str,
             task_function: Callable[[TaskItem | None, RunItem | None, dict], None],
             status: TaskStatus = 'enabled',
             task_metadata: dict = {},
+            task_tags: list[str] = [],
             register_with_runner: bool = True
         ):
         """
@@ -265,6 +264,7 @@ class TaskItem():
             task_idk=task_idk,
             version=version,
             task_metadata=task_metadata,
+            task_tags=task_tags,
             name=name,
             description=description,
             schedule_sets=schedule_sets,
@@ -295,6 +295,7 @@ class TaskItem():
                 task_idk = self.task_idk,
                 version = self.version,
                 task_metadata = self.task_metadata,
+                task_tags = self.task_tags,
                 name = self.name,
                 description = self.description,
                 schedule_sets = ScheduleSet.list_to_dict(self.schedule_sets),
