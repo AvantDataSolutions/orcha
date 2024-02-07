@@ -222,7 +222,6 @@ class TaskItem():
             schedule_sets: list[ScheduleSet],
             thread_group: str,
             task_function: Callable[[TaskItem | None, RunItem | None, dict], None],
-            status: TaskStatus = 'enabled',
             task_metadata: dict = {},
             task_tags: list[str] = [],
             register_with_runner: bool = True
@@ -252,13 +251,21 @@ class TaskItem():
             update_needed = True
         elif (
             current_task.task_metadata != task_metadata or
+            current_task.task_tags != task_tags or
             current_task.name != name or
             current_task.description != description or
             current_task.schedule_sets != schedule_sets or
-            current_task.thread_group != thread_group or
-            current_task.status != status
+            current_task.thread_group != thread_group
         ):
             update_needed = True
+
+        # Only re-enable inactive tasks, not disabled ones
+        task_status = 'enabled'
+        if current_task is not None:
+            if current_task.status == 'inactive':
+                task_status = 'enabled'
+            else:
+                task_status = current_task.status
 
         # Create and register the task with the task runner
         # before we check if it needs updating otherwise
@@ -273,7 +280,7 @@ class TaskItem():
             schedule_sets=schedule_sets,
             thread_group=thread_group,
             last_active=version,
-            status=status,
+            status=task_status,
             notes=None
         )
 
@@ -315,6 +322,8 @@ class TaskItem():
         """
         self.status = status
         self.notes = notes
+        # Toggling status will create a new version
+        self.version = dt.utcnow()
         self._update_db()
 
     def update_active(self) -> None:
