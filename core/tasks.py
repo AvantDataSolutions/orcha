@@ -9,14 +9,17 @@ from uuid import uuid4
 from croniter import croniter
 from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSON as PG_JSON
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.sql import text as sql
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql import text as sql
 
-from orcha.utils.sqlalchemy import (get, get_latest_versions, sqlalchemy_build,
-                                    postgres_scaffold)
-
+from orcha.utils.sqlalchemy import (
+    get,
+    get_latest_versions,
+    postgres_scaffold,
+    sqlalchemy_build,
+)
 
 print('Loading dh:',__name__)
 

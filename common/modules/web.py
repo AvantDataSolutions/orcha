@@ -6,8 +6,9 @@ from typing import Callable, Literal
 
 import pandas as pd
 import requests
-from orcha.core.module_base import EntityBase, ModuleBase, module_function
 from requests.cookies import RequestsCookieJar
+
+from orcha.core.module_base import EntityBase, ModuleBase, module_function
 
 
 @dataclass

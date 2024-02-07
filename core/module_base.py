@@ -1,17 +1,18 @@
 from __future__ import annotations
-from abc import abstractmethod
 
+from abc import abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime as dt
 from typing import Callable, Literal
 
 import pandas as pd
-from orcha.utils import kvdb
-from orcha.utils.sqlalchemy import create_table
 from sqlalchemy import Column, Index, Table
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
+
+from orcha.utils import kvdb
+from orcha.utils.sqlalchemy import create_table
 
 
 def module_function(func):

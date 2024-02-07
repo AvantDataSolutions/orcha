@@ -6,16 +6,22 @@ from typing import Literal
 
 import pandas as pd
 from sqlalchemy import (
-    TIMESTAMP, Column, DateTime, Index, MetaData, Table,
-    create_engine, delete
+    TIMESTAMP,
+    Column,
+    DateTime,
+    Index,
+    MetaData,
+    Table,
+    create_engine,
+    delete,
+    inspect,
 )
 from sqlalchemy import insert as sqla_insert
-from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
