@@ -54,7 +54,7 @@ class TaskRunner():
     def process_task(task: TaskItem):
         def _update_run_times(run: RunItem):
             current_run_times = kvdb.get('current_run_times', list, 'local')
-            if current_run_times != None:
+            if current_run_times is not None:
                 new_output = {'run_times': current_run_times}
                 run.set_output(new_output, merge=True)
         # Set the task as active so the scheduler doesn't disable it
