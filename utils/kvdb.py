@@ -31,9 +31,9 @@ def store(
     elif storage_type == 'local':
         exp_time = dt.utcnow() + expiry if expiry else None
         item = KvdbItem(storage_type, key, value, type(value).__name__, exp_time)
-        if threading.current_thread().ident not in store_threaded:
-            store_threaded[threading.current_thread().ident] = {}
-        store_threaded[threading.current_thread().ident][key] = item
+        if threading.current_thread().name not in store_threaded:
+            store_threaded[threading.current_thread().name] = {}
+        store_threaded[threading.current_thread().name][key] = item
     elif storage_type == 'global':
         raise Exception('Global kvdb storage not implemented')
 
@@ -44,13 +44,13 @@ def get(
         no_key_return: Literal['none', 'exception'] = 'none'
     ) -> Union[T, None]:
     result = None
-    if threading.current_thread().ident not in store_threaded:
-        store_threaded[threading.current_thread().ident] = {}
+    if threading.current_thread().name not in store_threaded:
+        store_threaded[threading.current_thread().name] = {}
     if storage_type == 'postgres':
         raise Exception('Postgres kvdb storage not implemented')
     elif storage_type == 'local':
-        if key in store_threaded[threading.current_thread().ident]:
-            result = store_threaded[threading.current_thread().ident][key]
+        if key in store_threaded[threading.current_thread().name]:
+            result = store_threaded[threading.current_thread().name][key]
             if result is None:
                 return None
             if result.expiry is not None and result.expiry < dt.utcnow():
