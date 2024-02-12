@@ -724,10 +724,12 @@ class RunItem():
             output = output
         )
 
-    def set_failed(self, output: dict = {}):
+    def set_failed(self, output: dict = {}, zero_duration = False):
         """
         Sets the run as failed and sets the end time.
         Merges the output with any existing output.
+        Optionally can fail the run with a zero duration, useful when
+        failing historical runs as we don't know when they actually stopped.
         """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
@@ -738,10 +740,14 @@ class RunItem():
             if db_item.output is not None:
                 output.update(db_item.output)
 
+        failed_time = dt.utcnow()
+        if zero_duration:
+            failed_time = self.start_time
+
         self.update(
             status = RunStatus.FAILED,
             start_time = self.start_time,
-            end_time = dt.utcnow(),
+            end_time = failed_time,
             output = output
         )
 

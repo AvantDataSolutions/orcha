@@ -26,6 +26,8 @@ class OrchaSchedulerConfig:
         - prune_runs_max_age(td | None = 180): The maximum age of runs to keep in the database. If None, then no runs will be pruned.
         - prune_logs_max_age(td | None = 180): The maximum age of logs to keep in the database. If None, then no logs will be pruned.
         - prune_interval(float = 3600): The interval in seconds at which the scheduler will prune the runs and logs.
+        - fail_historical_runs(bool = True): If True, fail any unstarted/incomplete runs that are older than fail_historical_age.
+        - fail_historical_interval(float = 43200): The interval in seconds at which the scheduler will check.
         """
         task_refresh_interval: float = 60
         fail_unstarted_runs: bool = True
@@ -33,6 +35,9 @@ class OrchaSchedulerConfig:
         prune_runs_max_age: td | None = td(days=180)
         prune_logs_max_age: td | None = td(days=180)
         prune_interval: float = 3600
+        fail_historical_runs: bool = True
+        fail_historical_age: td | None = td(hours=24)
+        fail_historical_interval: float = 3600
 
 
 class Scheduler:
@@ -45,6 +50,9 @@ class Scheduler:
     prune_runs_max_age: td | None
     prune_logs_max_age: td | None
     prune_interval: float
+    fail_historical_runs: bool
+    fail_historical_age: td | None
+    fail_historical_interval: float
 
     def __init__(
             self,
@@ -72,6 +80,9 @@ class Scheduler:
         self.prune_runs_max_age = config.prune_runs_max_age
         self.prune_logs_max_age = config.prune_logs_max_age
         self.prune_interval = config.prune_interval
+        self.fail_historical_runs = config.fail_historical_runs
+        self.fail_historical_age = config.fail_historical_age
+        self.fail_historical_interval = config.fail_historical_interval
 
         # Overwrite the config with the deprecated parameters
         if fail_unstarted_runs is not None:
@@ -91,6 +102,9 @@ class Scheduler:
         # Start the run pruning thread
         prune_thread = threading.Thread(target=self._prune_runs_and_logs)
         prune_thread.start()
+        # Start the historical run failure thread
+        fail_historical_thread = threading.Thread(target=self._fail_historical)
+        fail_historical_thread.start()
         return self.thread
 
     def stop(self):
@@ -117,7 +131,30 @@ class Scheduler:
                     'deleted_count': del_count
                 })
 
-    def _run(self):
+    def _fail_historical(self):
+        while self.is_running:
+            time.sleep(self.fail_historical_interval)
+            if self.fail_historical_runs and self.fail_historical_age is not None:
+                for task in self.all_tasks:
+                    open_runs = task.get_running_runs() + task.get_queued_runs()
+                    historical_count = 0
+                    for run in open_runs:
+                        run_age = dt.utcnow() - run.scheduled_time
+                        if run_age > self.fail_historical_age:
+                            run.set_failed(
+                                output={
+                                    'message': 'Historical run failed to start/finish'
+                                },
+                                zero_duration=True
+                            )
+                            historical_count += 1
+                    orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
+                        'task_id': task.task_idk,
+                        'max_age': str(self.fail_historical_age),
+                        'failed_count': historical_count
+                    })
+
+    def _process_schedules(self):
         while self.is_running:
             time.sleep(15)
             if self.last_refresh < time.time() - self.task_refresh_interval:
