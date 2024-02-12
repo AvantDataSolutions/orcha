@@ -740,13 +740,22 @@ class RunItem():
         """
         Sets the run as success and sets the end time.
         Merges the output with any existing output.
+        This will not overwrite an existing FAILED or WARN state, and
+        effectively only go from QUEUED or RUNNING to SUCCESS.
         """
         db_item = RunItem.get_by_id(self.run_idk, task=self._task)
         if db_item is not None:
-            if db_item.status == RunStatus.SUCCESS:
+            if db_item.status == RunStatus.FAILED:
+                # If a run has failed (e.g. timeout) then leave it has failed
+                return
+            elif db_item.status == RunStatus.WARN:
+                # If a run has a warning then leave it as a warning
+                return
+            elif db_item.status == RunStatus.SUCCESS:
                 # if it's already set, we don't
                 # want to update it again
                 return
+
             if db_item.output is not None:
                 output.update(db_item.output)
 
@@ -811,7 +820,8 @@ class RunItem():
 
     def set_output(self, output: dict | None, merge = False):
         """
-        Sets the output for the run. This will overwrite any existing output.
+        Sets the output for the run. This will overwrite any existing output and
+        and existing state (e.g. FAILED -> SUCCESS).
         If merge is set to True then the output will be merged with any
         existing output.
         """
