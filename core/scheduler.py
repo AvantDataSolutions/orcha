@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from datetime import timedelta as td
+from datetime import datetime as dt, timedelta as td
 
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
@@ -97,7 +97,7 @@ class Scheduler:
         self.is_running = True
         # Start the run scheduling thread
         self.task_refresh_interval = refresh_interval
-        self.thread = threading.Thread(target=self._run)
+        self.thread = threading.Thread(target=self._process_schedules)
         self.thread.start()
         # Start the run pruning thread
         prune_thread = threading.Thread(target=self._prune_runs_and_logs)
@@ -181,15 +181,22 @@ class Scheduler:
                             if last_run.start_time is None and (last_run.status == RunStatus.QUEUED):
                                 last_run.set_failed(
                                     output={
-                                        'message': 'Previous run failed to start'
+                                        'message': 'Run failed to start'
                                     }
                                 )
+                            if last_run.status == RunStatus.RUNNING and last_run.last_active is not None:
+                                if last_run.last_active < dt.utcnow() - td(minutes=2):
+                                    last_run.set_failed(
+                                        output={
+                                            'message': 'Run has been inactive for over 2 minutes'
+                                        }
+                                    )
                         if self.disable_stale_tasks and last_run is not None:
                             # If the task hasn't been active since the last run,
                             # then it's stale and should be disabled.
                             # Tasks should be checked every 5s, and runs at most frequent, every 1 minute
                             # so a task should have been active many times since the last run
-                            if task.last_active < last_run.scheduled_time:
+                            if task.last_active < min(last_run.scheduled_time, dt.utcnow() - td(minutes=5)):
                                 task.set_status('inactive', 'Task has been inactive since last scheduled run')
                                 continue
                         # print('Run due for task:', task.task_idk)

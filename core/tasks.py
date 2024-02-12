@@ -335,6 +335,12 @@ class TaskItem():
         self.last_active = dt.utcnow()
         self._update_db()
 
+    def get_schedule_set(self, set_idk: str) -> ScheduleSet | None:
+        for schedule in self.schedule_sets:
+            if schedule.set_idk == set_idk:
+                return schedule
+        return None
+
     def get_schedule_from_id(self, set_idk: str) -> ScheduleSet | None:
         for schedule in self.schedule_sets:
             if schedule.set_idk == set_idk:
@@ -364,6 +370,10 @@ class TaskItem():
         return RunItem.get_latest(task=self, schedule=schedule)
 
     def get_next_scheduled_time(self, schedule: ScheduleSet | None = None) -> dt:
+        """
+        Returns the next scheduled time for the task. If no schedule is
+        provided then the first schedule set is used.
+        """
         if schedule is None:
             schedule = self.schedule_sets[0]
         cron_schedule = schedule.cron_schedule
@@ -396,6 +406,12 @@ class TaskItem():
 
     def get_queued_runs(self) -> list[RunItem]:
         return RunItem.get_all_queued(
+            task_id=self.task_idk,
+            schedule=None
+        )
+
+    def get_running_runs(self) -> list[RunItem]:
+        return RunItem.get_running_runs(
             task_id=self.task_idk,
             schedule=None
         )
@@ -565,6 +581,23 @@ class RunItem():
         pairs = [
             ('task_idf', '=', task_id),
             ('status', '=', RunStatus.QUEUED)
+        ]
+        if schedule is not None:
+            pairs.append(('set_idf', '=', schedule.set_idk))
+        data = get(
+            s_maker = s_maker,
+            table='orcha.runs',
+            select_columns='*',
+            match_pairs=pairs,
+        )
+        return [RunItem(task, **(x._asdict())) for x in data]
+
+    @staticmethod
+    def get_running_runs(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+        task_id, task = RunItem._task_id_populate(task_id, task)
+        pairs = [
+            ('task_idf', '=', task_id),
+            ('status', '=', RunStatus.RUNNING)
         ]
         if schedule is not None:
             pairs.append(('set_idf', '=', schedule.set_idk))

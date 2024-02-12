@@ -5,6 +5,7 @@ import threading
 from orcha.core import tasks
 from orcha.core.tasks import TaskItem, RunItem
 from orcha.utils import kvdb
+from orcha.utils.threading import run_function_with_timeout, run_function_store_exception
 
 # TODO terminate nicely
 # https://itnext.io/containers-terminating-with-grace-d19e0ce34290
@@ -25,7 +26,7 @@ class ThreadHandler():
         self.is_running = True
         if self.thread is not None:
             raise Exception('Thread already started')
-        self.thread = threading.Thread(target=self._run)
+        self.thread = threading.Thread(target=self._run, name=self.thread_group)
         self.thread.start()
 
     def stop(self):
@@ -46,29 +47,61 @@ class ThreadHandler():
 class TaskRunner():
 
     handlers: dict[str, ThreadHandler] = {}
-
-    run_in_thread: bool = True
-    use_thread_groups: bool = True
+    task_timeout: int = 1800
+    """
+    Default task timeout in seconds, unless specified in the schedule config
+    """
 
     @staticmethod
     def process_task(task: TaskItem):
-        def _update_run_times(run: RunItem):
-            current_run_times = kvdb.get('current_run_times', list, 'local')
-            if current_run_times is not None:
-                new_output = {'run_times': current_run_times}
-                run.set_output(new_output, merge=True)
-        # Set the task as active so the scheduler doesn't disable it
-        task.update_active()
         # Run in a second thread to tick over the active time
         # this is mostly here if something crashes and the
         # task never finishes, so we can check for stale active
         # times and deal with it accordingly
         running_dict = {}
         def _refresh_active(run: RunItem):
-            while running_dict[run.run_idk]:
-                _update_run_times(run)
-                run.update_active()
-                time.sleep(30)
+            try:
+                while running_dict[run.run_idk]:
+                    _update_run_times(run)
+                    run.update_active()
+                    time.sleep(30)
+                # remove the run from the running dict to avoid
+                # long running threads from taking up memory
+                running_dict.pop(run.run_idk)
+            except KeyError:
+                # just handle any case where something else has removed the run
+                # which means the run has finished/died
+                pass
+
+        def _update_run_times(run: RunItem):
+            current_run_times = kvdb.get('current_run_times', list, 'local')
+            if current_run_times is not None:
+                new_output = {'run_times': current_run_times}
+                run.set_output(new_output, merge=True)
+
+        def _run_wrapper(run: RunItem):
+            """
+            Run wrapper to keep all of the 'same thread dependent'
+            work (kvdb store mostly) in the same 'timeout thread'.
+            """
+            # Clear any existing runtimes in the current thread
+            kvdb.store('local', 'current_run_times', [])
+            # Set the run as started so when we update the active time it
+            # has the version that has already started otherwise it will
+            # set the active time on the unstarted version of the run
+            run.set_running()
+            # Run the function with the config provided in the run itself
+            # this is to allow for manual runs to have different configs
+            try:
+                task.task_function(task, run, run.config)
+            except Exception as e:
+                run_function_store_exception(e)
+            # When complete, also update run times
+            _update_run_times(run)
+            run.set_success()
+
+        # Set the task as active so the scheduler doesn't disable it
+        task.update_active()
 
         # Because we have multiple schedules for a task we need
         # to get all the runs that are queued and run them because
@@ -79,36 +112,34 @@ class TaskRunner():
         #     return
         # queued_runs = [last_run]
         for run in queued_runs:
-            # Clear any existing runtimes in the current thread
-            kvdb.store('local', 'current_run_times', [])
-            # Set the run as started so when we update the active time it
-            # has the version that has already started otherwise it will
-            # set the active time on the unstarted version of the run
-            run.set_running()
-            running_dict[run.run_idk] = True
-            ra_thread = threading.Thread(target=_refresh_active, args=(run,))
-            ra_thread.start()
-            # print(f'Running task {task.name} with run_id {run.run_idk}')
             try:
-                # print('Running task:', task.task_idk)
-                # Run the function with the config provided in the run itself
-                # this is to allow for manual runs to have different configs
-                task.task_function(task, run, run.config)
-                # When complete, also update run times
-                _update_run_times(run)
-                run.set_success()
+                running_dict[run.run_idk] = True
+                timeout = run.config.get('timeout', TaskRunner.task_timeout)
+                ra_thread = threading.Thread(target=_refresh_active, args=(run,))
+                ra_thread.start()
+                run_function_with_timeout(
+                    timeout=timeout,
+                    message=f'Task {task.name} with run_id {run.run_idk} timed out (timeout: {timeout}s)',
+                    func=_run_wrapper,
+                    run=run
+                )
                 running_dict[run.run_idk] = False
             except Exception as e:
-                # raise e
-                # print(f'Error running task {task.name} with run_id {run.run_idk}, with exception: {str(e)}')
                 run.set_failed(output={
                     'exception': str(e),
                 })
-                running_dict[run.run_idk] = False
+                # if we have an exception the active time thread then just remove
+                # the run from the running dict and let the active timer thread
+                # catch the KeyError and stop itself
+                running_dict.pop(run.run_idk)
                 continue
-            # print(f'Finished task {task.name} with run_id {run.run_idk}')
 
-    def __init__(self, run_in_thread = True, use_thread_groups = True, default_runner = True):
+    def __init__(
+            self,
+            run_in_thread = True,
+            use_thread_groups = True,
+            default_runner = True
+        ):
         self.run_in_threads = run_in_thread
         self.use_thread_groups = use_thread_groups
         if default_runner:
