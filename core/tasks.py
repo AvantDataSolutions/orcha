@@ -757,6 +757,31 @@ class RunItem():
             output = output
         )
 
+    def set_warn(self, output: dict = {}):
+        """
+        Sets the run as a warning and sets the end time.
+        Merges the output with any existing output.
+        This will not overwrite an existing FAILED state.
+        """
+        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        if db_item is not None:
+            if db_item.status == RunStatus.FAILED:
+                # If a run has failed (e.g. timeout) then leave it has failed
+                return
+            elif db_item.status == RunStatus.WARN:
+                # if it's already set, we don't
+                # want to update it again
+                return
+            if db_item.output is not None:
+                output.update(db_item.output)
+
+        self.update(
+            status = RunStatus.WARN,
+            start_time = self.start_time,
+            end_time = dt.utcnow(),
+            output = output
+        )
+
     def set_failed(self, output: dict = {}, zero_duration = False):
         """
         Sets the run as failed and sets the end time.

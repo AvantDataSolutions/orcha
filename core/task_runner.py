@@ -98,6 +98,13 @@ class TaskRunner():
                 run_function_store_exception(e)
             # When complete, also update run times
             _update_run_times(run)
+            # if any of the current_run_times have a retry_count > 0 then set status as WARN
+            #use run.output.get('run_times', [])
+            if run.output is not None:
+                for run_time in run.output.get('run_times', []):
+                    if run_time['retry_count'] > 0:
+                        run.set_warn({'message': f'Run {run.run_idk} had {run_time["retry_count"]} retries'})
+                        return
             run.set_success()
 
         # Set the task as active so the scheduler doesn't disable it
