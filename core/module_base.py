@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from abc import abstractmethod
+import types
 from dataclasses import dataclass, field
 from datetime import datetime as dt
 from typing import Callable, Literal
@@ -268,19 +268,44 @@ class DatabaseSink(SinkBase):
         )
 
 
+@dataclass
 class TransformBase(ModuleBase):
-    @staticmethod
-    @abstractmethod
-    def transform(data: pd.DataFrame, **kwargs):
-        return NotImplementedError(f'{__class__.__name__} does not implement transform')
+    @module_function
+    def transform(self, **kwargs) -> pd.DataFrame:
+        raise NotImplementedError(f'{__class__.__name__} does not implement transform')
+
+    @module_function
+    def _do_transform(self, *args, **kwargs) -> pd.DataFrame:
+        return self._func(*args, **kwargs)
+
+    def __setattr__(self, name, value):
+        if name == 'transform' and isinstance(value, types.FunctionType):
+            # essentially we're replacing the transform function with
+            # a proxied function that is already decorated with module_function
+            # this saves us having to do fancy logic to wrap the provided
+            # function with module_function and update its args
+            # the main issue was having to pass the module_base to the function
+            # as the first positional argument
+            self._func = value
+            value = self._do_transform
+        super().__setattr__(name, value)
 
 
 @dataclass
 class ValidationBase(ModuleBase):
-    function: Callable
     @module_function
     def validate(self, data: pd.DataFrame, **kwargs) -> bool:
-        return self.function(data, **kwargs)
+        raise NotImplementedError(f'{__class__.__name__} does not implement validate')
+
+    @module_function
+    def _do_validate(self, *args, **kwargs) -> pd.DataFrame:
+        return self._func(*args, **kwargs)
+
+    def __setattr__(self, name, value):
+        if name == 'validate' and isinstance(value, types.FunctionType):
+            self._func = value
+            value = self._do_validate
+        super().__setattr__(name, value)
 
 
 @dataclass
