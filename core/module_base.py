@@ -43,6 +43,8 @@ def module_function(func):
     def wrapper(module_base: ModuleBase, *args, **kwargs):
         # Either use any retry config passed in or use the global one
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
+        # get the number of retries for this module, quietly passed via kwargs
+        retry_count = kwargs.get('retry_count', 0)
         if not isinstance(module_config, ModuleConfig):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
         try:
@@ -55,16 +57,11 @@ def module_function(func):
             current_run_times = kvdb.get('current_run_times', list, 'local')
             if current_run_times is None:
                 current_run_times = []
-            # get the number of retries for this module
-            # using get/setattr to quietly manage temp variables for the module
-            # between retries
-            retry_count = getattr(module_base, '_mfcg_wrapper_attempts', 0)
             # then add the new run time to it. We shouldn't have to
             # deal with concurrent access here as each module is
             # is run in the same thread
             current_run_times.append({
                 'module_idk': module_base.module_idk,
-                'module_name': module_base.name,
                 'start_time_posix': start_time.timestamp(),
                 'end_time_posix': end_time.timestamp(),
                 'duration_seconds': (end_time - start_time).total_seconds(),
@@ -73,11 +70,12 @@ def module_function(func):
             kvdb.store('local', 'current_run_times', current_run_times)
             return return_value
         except Exception as e:
-            total_attempts = getattr(module_base, '_mfcg_wrapper_attempts', 0) + 1
+            total_attempts = retry_count + 1
             if total_attempts > module_config.max_retries:
-                raise Exception(f'Exception ({type(e).__name__}) in {module_base.name} ({module_base.module_idk}) module: {e} (total attempts: {total_attempts})')
+                raise Exception(f'Exception ({type(e).__name__}) in {module_base.module_idk} module: {e} (total attempts: {total_attempts})')
             else:
-                setattr(module_base, '_mfcg_wrapper_attempts', total_attempts)
+                # We're trying again, so increase the retry count
+                kwargs['retry_count'] = total_attempts
                 time.sleep(module_config.retry_interval)
                 return wrapper(module_base, *args, **kwargs)
     return wrapper
