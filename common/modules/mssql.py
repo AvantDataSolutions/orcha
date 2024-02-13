@@ -21,7 +21,6 @@ class MssqlEntity(DatabaseEntity):
     ):
         super().__init__(
             module_idk=module_idk,
-            name=name,
             description=description,
             user_name=user_name,
             password=password,

@@ -86,7 +86,6 @@ def module_function(func):
 @dataclass
 class ModuleBase():
     module_idk: str
-    name: str
     description: str
     # TODO Some form of lineage
     # upstream: list[ModuleBase]
