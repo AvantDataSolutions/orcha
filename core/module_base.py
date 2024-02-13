@@ -28,7 +28,7 @@ class ModuleConfig():
     retry_interval: int = 10
 
 
-GLOBAL_MODULE_CONFIG: ModuleConfig | None = ModuleConfig()
+GLOBAL_MODULE_CONFIG: ModuleConfig = ModuleConfig()
 """
 Config used for all modules. Care should be taken when changing this
 to make sure it is in scope for all modules intended to be affected.
