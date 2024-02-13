@@ -44,7 +44,7 @@ def module_function(func):
         # Either use any retry config passed in or use the global one
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
         if not isinstance(module_config, ModuleConfig):
-            Exception(f'Exception (ValueError) in {module_base.name} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
+            Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
         try:
             start_time = dt.now()
             return_value = func(module_base, *args, **kwargs)
