@@ -641,7 +641,7 @@ class RunItem():
         return runs[0]
 
     @staticmethod
-    def get_by_id(run_id: str, task: TaskItem | None = None) -> RunItem | None:
+    def get(run_id: str, task: TaskItem | None = None) -> RunItem | None:
         data = get(
             s_maker = s_maker,
             table='orcha.runs',
@@ -699,7 +699,7 @@ class RunItem():
         self.end_time = end_time
         self.output = output
 
-        db_data = RunItem.get_by_id(self.run_idk, task=self._task)
+        db_data = RunItem.get(self.run_idk, task=self._task)
 
         needs_update = False
         if db_data is None:
@@ -720,7 +720,7 @@ class RunItem():
         Sets the run as running and sets the start time.
         Merges the output with any existing output.
         """
-        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        db_item = RunItem.get(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.RUNNING:
                 # if it's already set, we don't
@@ -743,7 +743,7 @@ class RunItem():
         This will not overwrite an existing FAILED or WARN state, and
         effectively only go from QUEUED or RUNNING to SUCCESS.
         """
-        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        db_item = RunItem.get(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
@@ -772,7 +772,7 @@ class RunItem():
         Merges the output with any existing output.
         This will not overwrite an existing FAILED state.
         """
-        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        db_item = RunItem.get(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
@@ -798,7 +798,7 @@ class RunItem():
         Optionally can fail the run with a zero duration, useful when
         failing historical runs as we don't know when they actually stopped.
         """
-        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        db_item = RunItem.get(self.run_idk, task=self._task)
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # if it's already set, we don't
@@ -825,7 +825,7 @@ class RunItem():
         If merge is set to True then the output will be merged with any
         existing output.
         """
-        db_item = RunItem.get_by_id(self.run_idk, task=self._task)
+        db_item = RunItem.get(self.run_idk, task=self._task)
         if db_item is None:
             raise Exception('update_output failed, run not found')
         new_output = output
