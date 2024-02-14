@@ -20,8 +20,8 @@ from sqlalchemy import insert as sqla_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.row import Row
-from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.orm import Session, sessionmaker, declarative_base
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
