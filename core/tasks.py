@@ -39,6 +39,13 @@ _register_task_with_runner: Callable | None = None
 ===================================================================
 """
 
+def confirm_initialised():
+    """
+    Guard function to ensure that orcha has been initialised
+    """
+    if not is_initialised:
+        raise RuntimeError('orcha not initialised. Call orcha.core.initialise() first')
+
 def setup_sqlalchemy(
         orcha_user: str, orcha_pass: str,
         orcha_server: str, orcha_db: str
@@ -168,6 +175,9 @@ class TaskItem():
             thread_group: str, last_active: dt, status: TaskStatus,
             task_tags: list[str], notes: str | None = None
         ) -> None:
+
+        confirm_initialised()
+
         # If the schedule sets are passed as a dict, most likely from
         # the database, then convert them to a list of ScheduleSet objects
         sets = []
@@ -190,6 +200,7 @@ class TaskItem():
 
     @staticmethod
     def get_all() -> list[TaskItem]:
+        confirm_initialised()
         data = get_latest_versions(
             s_maker=s_maker,
             table='orcha.tasks',
@@ -201,6 +212,7 @@ class TaskItem():
 
     @staticmethod
     def get(task_idk: str) -> TaskItem | None:
+        confirm_initialised()
         data = get_latest_versions(
             s_maker=s_maker,
             table='orcha.tasks',
@@ -237,8 +249,7 @@ class TaskItem():
             the scheduler from queuing runs for them.
         """
 
-        if not is_initialised:
-            raise Exception('orcha not initialised. Call orcha.initialise() first')
+        confirm_initialised()
 
         version = dt.utcnow()
         current_task = TaskItem.get(task_idk)
@@ -521,8 +532,8 @@ class RunItem():
             task: TaskItem, run_type: RunType,
             schedule: ScheduleSet, scheduled_time: dt
         ) -> RunItem:
-        if not is_initialised:
-            raise Exception('orcha not initialised. Call orcha.initialise() first')
+        confirm_initialised()
+
         run_idk = str(uuid4())
         status = RunStatus.QUEUED
 
@@ -557,6 +568,7 @@ class RunItem():
         Gets all runs for a task since a particular time (inclusive)
         for a particular schedule set (optional, None for all runs)
         """
+        confirm_initialised()
         task_id, task = RunItem._task_id_populate(task_id, task)
         pairs = [
             ('task_idf', '=', task_id),
@@ -577,6 +589,7 @@ class RunItem():
 
     @staticmethod
     def get_all_queued(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+        confirm_initialised()
         task_id, task = RunItem._task_id_populate(task_id, task)
         pairs = [
             ('task_idf', '=', task_id),
@@ -594,6 +607,7 @@ class RunItem():
 
     @staticmethod
     def get_running_runs(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+        confirm_initialised()
         task_id, task = RunItem._task_id_populate(task_id, task)
         pairs = [
             ('task_idf', '=', task_id),
@@ -614,6 +628,7 @@ class RunItem():
             schedule: ScheduleSet, task_id: str | None = None,
             task: TaskItem | None = None, run_type: RunType | None = None
         ) -> RunItem | None:
+        confirm_initialised()
         task_id, task = RunItem._task_id_populate(task_id, task)
         # To keep query time less dependent on the number of runs in the database
         # we can use the last run time and the time between runs to get the
@@ -642,6 +657,7 @@ class RunItem():
 
     @staticmethod
     def get(run_id: str, task: TaskItem | None = None) -> RunItem | None:
+        confirm_initialised()
         data = get(
             s_maker = s_maker,
             table='orcha.runs',
