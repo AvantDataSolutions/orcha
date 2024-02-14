@@ -407,7 +407,10 @@ class TaskItem():
             return True, last_run
         return last_run.scheduled_time < self.get_last_scheduled(schedule), last_run
 
-    def schedule_run(self, schedule) -> RunItem:
+    def schedule_run(self, schedule: ScheduleSet) -> RunItem:
+        """
+        Schedules a run for the task and schedule set and returns the run instance
+        """
         return RunItem.create(
             task=self,
             run_type='scheduled',
