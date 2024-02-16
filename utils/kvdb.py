@@ -5,7 +5,7 @@ from datetime import datetime as dt, timedelta as td
 import threading
 from typing import Any, Literal, Type, TypeVar, Union
 
-print('Loading page:',__name__)
+print('Loading:',__name__)
 
 T = TypeVar('T')
 

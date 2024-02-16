@@ -3,7 +3,9 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime as dt, timedelta as td
+from datetime import datetime as dt
+from datetime import timedelta as td
+from enum import Enum
 
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
@@ -12,6 +14,12 @@ orcha_log = LogManager('orcha')
 
 # TODO terminate nicely: https://itnext.io/containers-terminating-with-grace-d19e0ce34290
 # TODO https://docs.docker.com/engine/reference/commandline/stop/
+
+
+class RunningState(Enum):
+    running = 'running'
+    stopped = 'stopped'
+    paused = 'paused'
 
 
 @dataclass
@@ -71,8 +79,11 @@ class Scheduler:
         - disable_stale_tasks: If True, then if a task hasn't been active
         since the last run, then the task will be set to inactive.
         """
-        self.is_running = False
+        self.running_state: RunningState = RunningState.running
         self.thread = None
+        self.prune_thread = None
+        self.fail_hist_thread = None
+        self.refresh_tasks_thread = None
 
         self.task_refresh_interval = config.task_refresh_interval
         self.fail_unstarted_runs = config.fail_unstarted_runs
@@ -92,30 +103,52 @@ class Scheduler:
             self.disable_stale_tasks = disable_stale_tasks
             raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
 
-    def start(self, refresh_interval: float = 60):
+    def start(self):
+        """
+        This starts the scheduler threads, and is safe to call even if the
+        threads are already running. If the threads are already running, then
+        this will do nothing.
+        """
         orcha_log.add_entry('scheduler', 'status', 'Starting', {})
-        self.is_running = True
-        # Start the run scheduling thread
-        self.task_refresh_interval = refresh_interval
-        self.thread = threading.Thread(target=self._process_schedules)
-        self.thread.start()
+        self.running_state = RunningState.running
+        # Only start threads if they are None (dont exist) or they are no
+        # longer alive (have finished/died/stopped)
+        if self.thread is None or not self.thread.is_alive():
+            # Start the run scheduling thread
+            self.thread = threading.Thread(target=self._process_schedules)
+            self.thread.start()
         # Start the run pruning thread
-        prune_thread = threading.Thread(target=self._prune_runs_and_logs)
-        prune_thread.start()
+        if self.prune_runs_max_age is not None:
+            if self.prune_thread is None or not self.prune_thread.is_alive():
+                self.prune_thread = threading.Thread(target=self._prune_runs_and_logs)
+                self.prune_thread.start()
         # Start the historical run failure thread
-        fail_historical_thread = threading.Thread(target=self._fail_historical)
-        fail_historical_thread.start()
+        if self.fail_historical_runs:
+            if self.fail_hist_thread is None or not self.fail_hist_thread.is_alive():
+                self.fail_hist_thread = threading.Thread(target=self._fail_historical)
+                self.fail_hist_thread.start()
+        # Start the task refreshing thread
+        if self.refresh_tasks_thread is None or not self.refresh_tasks_thread.is_alive():
+            self.refresh_tasks_thread = threading.Thread(target=self._refresh_tasks)
+            self.refresh_tasks_thread.start()
         return self.thread
 
     def stop(self):
         orcha_log.add_entry('scheduler', 'status', 'Stopping', {})
-        self.is_running = False
+        self.running_state = RunningState.stopped
         if self.thread is not None:
             self.thread.join()
 
+    def pause(self):
+        orcha_log.add_entry('scheduler', 'status', 'Pausing', {})
+        self.running_state
+
     def _prune_runs_and_logs(self):
-        while self.is_running:
+        while self.running_state != RunningState.stopped:
             time.sleep(self.prune_interval)
+            # Loop while we're not stopped, but only do stuff if we're running
+            if self.running_state != RunningState.running:
+                continue
             if self.prune_runs_max_age is not None:
                 for task in self.all_tasks:
                     del_count = task.prune_runs(self.prune_runs_max_age)
@@ -132,8 +165,11 @@ class Scheduler:
                 })
 
     def _fail_historical(self):
-        while self.is_running:
+        while self.running_state != RunningState.stopped:
             time.sleep(self.fail_historical_interval)
+            # Loop while we're not stopped, but only do stuff if we're running
+            if self.running_state != RunningState.running:
+                continue
             if self.fail_historical_runs and self.fail_historical_age is not None:
                 for task in self.all_tasks:
                     open_runs = task.get_running_runs() + task.get_queued_runs()
@@ -154,16 +190,24 @@ class Scheduler:
                         'failed_count': historical_count
                     })
 
-    def _process_schedules(self):
-        while self.is_running:
-            time.sleep(15)
-            if self.last_refresh < time.time() - self.task_refresh_interval:
+    def _refresh_tasks(self):
+        while self.running_state != RunningState.stopped:
+            time.sleep(self.task_refresh_interval)
+            # Loop while we're not stopped, but only do stuff if we're running
+            if self.running_state == RunningState.running:
                 self.all_tasks = TaskItem.get_all()
-                orcha_log.add_entry('scheduler', 'run', 'Refreshing tasks', {
+                orcha_log.add_entry('scheduler', 'refresh_tasks', 'Refreshing tasks', {
                     'task_count': len(self.all_tasks)
                 })
-                self.last_refresh = time.time()
-            elif len(self.all_tasks) == 0:
+
+    def _process_schedules(self):
+        while self.running_state != RunningState.stopped:
+            time.sleep(15)
+            # Loop while we're not stopped, but only do stuff if we're running
+            if self.running_state != RunningState.running:
+                continue
+
+            if len(self.all_tasks) == 0:
                 self.last_refresh = time.time()
                 self.all_tasks = TaskItem.get_all()
 
@@ -201,3 +245,5 @@ class Scheduler:
                                 continue
                         # print('Run due for task:', task.task_idk)
                         run = task.schedule_run(schedule)
+                        if run is None:
+                            raise Exception('Failed to create run')

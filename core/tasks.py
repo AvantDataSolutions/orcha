@@ -21,7 +21,7 @@ from orcha.utils.sqlalchemy import (
     sqlalchemy_build,
 )
 
-print('Loading dh:',__name__)
+print('Loading:',__name__)
 
 is_initialised = False
 
@@ -253,9 +253,14 @@ class TaskItem():
 
         version = dt.utcnow()
         current_task = TaskItem.get(task_idk)
+        new_s_sets: list[ScheduleSet] = []
         for schedule in schedule_sets:
             # set the set_idk as task_id+cron_schedule
-            schedule.set_idk = f'{task_idk}_{schedule.cron_schedule}'
+            new_s_sets.append(ScheduleSet.create_with_key(
+                set_idk=f'{task_idk}_{schedule.cron_schedule}',
+                cron_schedule=schedule.cron_schedule,
+                config=schedule.config
+            ))
 
         update_needed = False
         if current_task is None:
@@ -265,7 +270,7 @@ class TaskItem():
             current_task.task_tags != task_tags or
             current_task.name != name or
             current_task.description != description or
-            current_task.schedule_sets != schedule_sets or
+            current_task.schedule_sets != new_s_sets or
             current_task.thread_group != thread_group
         ):
             update_needed = True
@@ -288,7 +293,7 @@ class TaskItem():
             task_tags=task_tags,
             name=name,
             description=description,
-            schedule_sets=schedule_sets,
+            schedule_sets=new_s_sets,
             thread_group=thread_group,
             last_active=version,
             status=task_status,
@@ -409,7 +414,8 @@ class TaskItem():
 
     def schedule_run(self, schedule: ScheduleSet) -> RunItem:
         """
-        Schedules a run for the task and schedule set and returns the run instance
+        Schedules a run for the task and schedule set and returns the run instance.
+        This creates a run regardless of whether a run is due or not.
         """
         return RunItem.create(
             task=self,
@@ -524,7 +530,7 @@ class RunItem():
         elif task_id is not None:
             task = TaskItem.get(task_id)
             if task is None:
-                raise Exception('Task not found')
+                raise Exception(f'Task not found: {task_id}')
         else:
             raise Exception('Either task_id or task must be provided')
 
@@ -573,6 +579,10 @@ class RunItem():
         """
         confirm_initialised()
         task_id, task = RunItem._task_id_populate(task_id, task)
+        # make sure the schedule set is for this task
+        task_schedule_sets = [x.set_idk for x in task.schedule_sets]
+        if schedule is not None and schedule.set_idk not in task_schedule_sets:
+            raise Exception('Schedule set not found for task')
         pairs = [
             ('task_idf', '=', task_id),
             ('scheduled_time', '>=', since.isoformat())
@@ -581,7 +591,6 @@ class RunItem():
             pairs.append(('run_type', '=', run_type))
         if schedule is not None:
             pairs.append(('set_idf', '=', schedule.set_idk))
-
         data = get(
             s_maker = s_maker,
             table='orcha.runs',
@@ -745,6 +754,8 @@ class RunItem():
                 # if it's already set, we don't
                 # want to update it again
                 return
+            if db_item.status != RunStatus.QUEUED:
+                raise Exception('Run status is not queued, cannot set to running')
             if db_item.output is not None:
                 output.update(db_item.output)
 
@@ -766,10 +777,10 @@ class RunItem():
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
-                return
+                raise Exception('Run status set to failed, cannot set to success')
             elif db_item.status == RunStatus.WARN:
                 # If a run has a warning then leave it as a warning
-                return
+                raise Exception('Run status set to warn, cannot set to success')
             elif db_item.status == RunStatus.SUCCESS:
                 # if it's already set, we don't
                 # want to update it again
@@ -795,7 +806,7 @@ class RunItem():
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
-                return
+                raise Exception('Run status set to failed, cannot set to warn')
             elif db_item.status == RunStatus.WARN:
                 # if it's already set, we don't
                 # want to update it again

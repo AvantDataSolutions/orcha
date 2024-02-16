@@ -35,7 +35,15 @@ class ThreadHandler():
             self.thread.join()
 
     def add_task(self, task: TaskItem):
-        self.tasks.append(task)
+        # check if the task is in the list by id and if not append it
+        task_ids = [t.task_idk for t in self.tasks]
+        if task.task_idk not in task_ids:
+            self.tasks.append(task)
+        else:
+            # replace the task if it's already in the list
+            for i, t in enumerate(self.tasks):
+                if t.task_idk == task.task_idk:
+                    self.tasks[i] = task
 
     def _run(self):
         while self.is_running:
@@ -105,7 +113,11 @@ class TaskRunner():
                     if run_time['retry_count'] > 0:
                         run.set_warn({'message': f'Run {run.run_idk} had {run_time["retry_count"]} retries'})
                         return
-            run.set_success()
+            # only if it's still running do we want to set it as success,
+            # otherwise it's already been set as failed, warn, etc and
+            # we need to leave it in that state
+            if run.status == tasks.RunStatus.RUNNING:
+                run.set_success()
 
         # Set the task as active so the scheduler doesn't disable it
         task.update_active()
@@ -149,13 +161,16 @@ class TaskRunner():
         ):
         self.run_in_threads = run_in_thread
         self.use_thread_groups = use_thread_groups
+        # If we have a dummy runner, then only register it as the default
+        # if it's not already set. This is to allow for the dummy runner to
+        # be set as the default runner in the tests or similar cases
         if default_runner:
             if tasks._register_task_with_runner is not None:
                 raise Exception('Default task runner already set')
-            tasks._register_task_with_runner = self.register_task
+            else:
+                tasks._register_task_with_runner = self.register_task
 
     def register_task(self, task: TaskItem):
-        # TODO: check if task is already registered
         # If we're not using thread groups
         # then we default to using the base thread
         if self.use_thread_groups:
@@ -168,6 +183,7 @@ class TaskRunner():
             if self.run_in_threads:
                 self.handlers[thread_group].start()
 
+        # Add task to the handler and will replace the task if it's already there
         self.handlers[thread_group].add_task(task)
 
     def register_tasks(self, tasks: list[TaskItem]):
