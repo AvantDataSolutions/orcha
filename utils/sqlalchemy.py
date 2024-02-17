@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import insert as sqla_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.declarative import DeclarativeMeta
@@ -71,6 +72,17 @@ def mssql_partial_scaffold(user: str, passwd: str, server: str, db: str):
     engine = create_engine(
         f'mssql+pymssql://{user}:{passwd}@{server}/{db}'
     )
+    session = sessionmaker(bind=engine)
+    return engine, session
+
+
+def sqlite_partial_scaffold(db_path: str):
+    """
+    Creates a connection to a SQLite database without a schema or
+    declarative base object. Returns the engine and sessionmaker.
+    SQLite specific connection parameters are set here.
+    """
+    engine = create_engine(f'sqlite:///{db_path}')
     session = sessionmaker(bind=engine)
     return engine, session
 
@@ -174,7 +186,7 @@ def tables_match(table1, table2):
 
 
 def create_table(
-        schema_name: str,  table_name: str,
+        schema_name: str | None,  table_name: str,
         engine: Engine,
         columns: list[Column], indexes: list[Index] = [],
         build_table: bool = True
@@ -183,7 +195,11 @@ def create_table(
     Returns an SQLAlchemy Table object with the given name, column definitions.
     Optionally can build this table in the database or not.
     """
-    metadata = MetaData(schema=schema_name)
+    # Typically for sqlite which doesnt use schemas
+    if schema_name is None:
+        metadata = MetaData()
+    else:
+        metadata = MetaData(schema=schema_name)
     table = Table(
         table_name,
         metadata,
@@ -236,6 +252,25 @@ def postgres_upsert(
                 index_elements=index_elements,
                 set_=update_dict
             )
+            db.execute(stmt)
+
+
+def sqlite_upsert(
+        session: sessionmaker, table: Table, data: pd.DataFrame
+    ) -> None:
+    if len(data) == 0:
+        return None
+
+    with session.begin() as db:
+        table_inspect = inspect(table)
+        if table_inspect is None:
+            return None
+        index_elements = [column.name for column in table_inspect.primary_key]
+        if len(index_elements) == 0:
+            raise Exception('Cannot upsert on table with no Primary Key')
+        for chunk in [data[i:i+1000] for i in range(0, len(data), 1000)]:
+            stmt = sqlite_insert(table).values(chunk.to_dict('records'))
+            stmt = stmt.prefix_with('OR REPLACE')
             db.execute(stmt)
 
 
