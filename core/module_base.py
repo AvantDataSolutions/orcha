@@ -118,7 +118,7 @@ class DatabaseEntity(EntityBase):
                 return None
 
     def define_table(
-            self, schema_name: str,  table_name: str,
+            self, schema_name: str | None,  table_name: str,
             columns: list[Column], indexes: list[Index] = [],
             build=True
         ):
