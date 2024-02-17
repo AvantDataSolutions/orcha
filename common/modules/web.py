@@ -18,6 +18,9 @@ class RestEntity(EntityBase):
     create_headers: Callable[[], dict] | None = None
     cookies: RequestsCookieJar  | None = None
     create_cookies: Callable[[], RequestsCookieJar ] | None = None
+    # Override username and pass as typically REST endpoints wont use them
+    user_name: str | None = None
+    password: str | None = None
 
 
 @dataclass
@@ -78,9 +81,15 @@ class RestSource(ModuleBase):
             else:
                 data = None
 
+            if self.data_entity.user_name and self.data_entity.password:
+                _auth = (self.data_entity.user_name, self.data_entity.password)
+            else:
+                _auth = None
+
             response = requests.request(
                 method=self.request_type,
                 url=url_with_query,
+                auth=_auth,
                 headers=cur_headers,
                 cookies=cur_cookies,
                 data=data,
