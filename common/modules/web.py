@@ -33,7 +33,7 @@ class RestSource(ModuleBase):
     postprocess: Callable[[requests.Response], pd.DataFrame] | None = None
 
     @module_function
-    def get(self, **kwargs) -> pd.DataFrame:
+            request_kwargs: dict[str, Any] = {},
         """
         Calls the rest endpoint and returns the response.
         Appends the sub_path to the url and adds the
@@ -93,7 +93,7 @@ class RestSource(ModuleBase):
                 headers=cur_headers,
                 cookies=cur_cookies,
                 data=data,
-                **kwargs
+                **request_kwargs
             )
 
             if response.status_code != 200:
