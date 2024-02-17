@@ -1,0 +1,13 @@
+FROM python:3.11.5-slim-bookworm
+
+WORKDIR /
+RUN apt update -y
+
+COPY requirements.txt requirements.txt
+RUN pip install -r requirements.txt
+
+COPY / /orcha_tests
+
+ENV PYTHONUNBUFFERED 1
+
+ENTRYPOINT [ "python3", "-m", "unittest", "orcha_tests/tests_uninitialised.py", "-v" ]

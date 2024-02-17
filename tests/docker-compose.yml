@@ -1,0 +1,47 @@
+version: '3.7'
+
+services:
+  orcha-tests-db:
+    container_name: orcha-tests-db
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    command: postgres -c listen_addresses='*'
+    stop_grace_period: 10m
+    stop_signal: SIGINT
+    environment:
+      POSTGRES_USER: orcha_user
+      POSTGRES_PASSWORD: orcha_pass
+      POSTGRES_DB: orcha
+
+  orcha-tests:
+    container_name: orcha-tests
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    working_dir: /
+    environment:
+      ORCHA_CORE_USER: orcha_user
+      ORCHA_CORE_PASSWORD: orcha_pass
+      ORCHA_CORE_SERVER: orcha-tests-db:5432
+      ORCHA_CORE_DB: orcha
+    volumes:
+      - ../:/orcha
+    depends_on:
+      - orcha-tests-db
+
+
+  orcha-tests-uninitialised:
+    container_name: orcha-tests-uninitialised
+    build:
+      context: ./
+      dockerfile: ./Dockerfile-uninitialised
+    working_dir: /
+    environment:
+      ORCHA_CORE_USER: orcha_user
+      ORCHA_CORE_PASSWORD: orcha_pass
+      ORCHA_CORE_SERVER: orcha-tests-db:5432
+      ORCHA_CORE_DB: orcha
+    volumes:
+      - ../:/orcha
+    depends_on:
+      - orcha-tests-db

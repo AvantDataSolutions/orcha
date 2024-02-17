@@ -1,0 +1,9 @@
+numpy
+pandas
+bcrypt
+
+sqlalchemy >2,<3
+psycopg2-binary
+
+pydantic
+croniter
