@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Callable, Literal
+from typing import Any, Callable, Literal
 
 import pandas as pd
 import requests
@@ -26,14 +26,20 @@ class RestEntity(EntityBase):
 @dataclass
 class RestSource(ModuleBase):
     data_entity: RestEntity | None
-    sub_path: str | None
-    query_params: dict | None
     request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
     request_data: dict | str | None = None
+    sub_path: str | None = None
+    query_params: dict | None = None
     postprocess: Callable[[requests.Response], pd.DataFrame] | None = None
 
     @module_function
+    def get(
+            self,
+            sub_path: str | None = None,
+            query_params: dict | None = None,
             request_kwargs: dict[str, Any] = {},
+            **kwargs
+        ) -> pd.DataFrame:
         """
         Calls the rest endpoint and returns the response.
         Appends the sub_path to the url and adds the
@@ -44,20 +50,24 @@ class RestSource(ModuleBase):
         and performs any required logic to convert it to
         a dataframe. If no postprocess function is provided
         then the response json is converted to a dataframe.
-        kwargs: Any additional kwargs are passed to the
-        requests.request method.
+        sub_path/query_params: These are provided as a dynamic override
+        for those set in the source.
+        request_kwargs: kwargs are passed to the requests.request method.
         """
+        sub_path = sub_path if sub_path is not None else self.sub_path
+        query_params = query_params if query_params is not None else self.query_params
+
         if self.data_entity is None:
             raise Exception('No data entity set for source')
         else:
             url_with_query = self.data_entity.url
-            if self.sub_path is not None:
-                if self.sub_path[0] != '/':
+            if sub_path is not None:
+                if sub_path[0] != '/':
                     url_with_query += '/'
-                url_with_query += f'{self.sub_path}'
-            if self.query_params is not None:
+                url_with_query += f'{sub_path}'
+            if query_params is not None:
                 url_with_query += '?'
-                for key, value in self.query_params.items():
+                for key, value in query_params.items():
                     url_with_query += f'{key}={value}&'
                 # Remove the last '&'
                 url_with_query = url_with_query[:-1]
