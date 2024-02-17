@@ -15,7 +15,7 @@ from sqlalchemy import Table
 class MssqlEntity(DatabaseEntity):
 
     def __init__(
-            self, module_idk: str, name: str, description: str,
+            self, module_idk: str, description: str,
             user_name: str, password: str, host: str, port: int,
             database_name: str
     ):
