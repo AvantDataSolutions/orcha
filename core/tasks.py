@@ -232,8 +232,8 @@ class TaskItem():
     def create(
             cls, task_idk: str, name: str, description: str,
             schedule_sets: list[ScheduleSet],
-            thread_group: str,
             task_function: Callable[[TaskItem | None, RunItem | None, dict], None],
+            thread_group: str = 'base_thread',
             task_metadata: dict = {},
             task_tags: list[str] = [],
             register_with_runner: bool = True
