@@ -11,16 +11,34 @@ from requests.cookies import RequestsCookieJar
 from orcha.core.module_base import EntityBase, ModuleBase, module_function
 
 
-@dataclass
 class RestEntity(EntityBase):
     url: str
     headers: dict | None = None
     create_headers: Callable[[], dict] | None = None
     cookies: RequestsCookieJar  | None = None
     create_cookies: Callable[[], RequestsCookieJar ] | None = None
-    # Override username and pass as typically REST endpoints wont use them
-    user_name: str | None = None
-    password: str | None = None
+
+    def __init__(
+            self, module_idk: str, description: str,
+            url: str, headers: dict | None = None,
+            create_headers: Callable[[], dict] | None = None,
+            cookies: RequestsCookieJar  | None = None,
+            create_cookies: Callable[[], RequestsCookieJar ] | None = None,
+            # User and password are optional for convenience
+            user_name: str = '',
+            password: str = ''
+        ):
+        super().__init__(
+            module_idk=module_idk,
+            description=description,
+            user_name=user_name,
+            password=password,
+        )
+        self.url = url
+        self.headers = headers
+        self.create_headers = create_headers
+        self.cookies = cookies
+        self.create_cookies = create_cookies
 
 
 @dataclass
