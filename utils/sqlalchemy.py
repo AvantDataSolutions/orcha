@@ -121,10 +121,18 @@ def sqlalchemy_build_schema(schema_name: str, engine: Engine):
 
 
 def sqlalchemy_build_table(table: Table, engine: Engine):
+    table.create(engine, checkfirst=True)
+
+
+def check_definitions(table: Table, engine: Engine):
+    """
+    Loads the existing table from the database and checks that the
+    provided table definition matches that in the database.
+    Raises an exception if the definitions do not match or returns True for convenience.
+    """
     engine_inspect = inspect(engine)
     if engine_inspect is None:
         raise Exception('Engine inspect failed for table: ' + table.name)
-    table.create(engine, checkfirst=True) # type: ignore
     # If the table exists, check that the columns match
     existing_table = Table(table.name, MetaData(schema=table.schema), autoload_with=engine)
     table_match, match_str = tables_match(table, existing_table)
@@ -134,7 +142,7 @@ def sqlalchemy_build_table(table: Table, engine: Engine):
     index_match, match_str = indexes_match(table, existing_table)
     if not index_match:
         raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
-
+    return True
 
 def indexes_match(table1, table2):
     """
@@ -189,6 +197,7 @@ def create_table(
         schema_name: str | None,  table_name: str,
         engine: Engine,
         columns: list[Column], indexes: list[Index] = [],
+        match_definition: bool = True,
         build_table: bool = True
     ):
     """
@@ -208,6 +217,8 @@ def create_table(
     )
     if build_table:
         sqlalchemy_build_table(table, engine)
+    if match_definition:
+        check_definitions(table, engine)
 
     return table
 
