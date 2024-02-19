@@ -186,7 +186,7 @@ class b_RunManagement(unittest.TestCase):
 
         task.prune_runs(max_age=td(seconds=0))
         all_runs = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
@@ -200,7 +200,7 @@ class b_RunManagement(unittest.TestCase):
         run_2 = task.schedule_run(schedule=task.schedule_sets[0])
 
         all_runs = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
@@ -295,7 +295,7 @@ class b_RunManagement(unittest.TestCase):
         run_t2_5min = task_2.schedule_run(schedule=t2_5min_sset)
 
         runs_t1_1min = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=t1_1min_sset,
             since=dt.utcnow() - td(days=1)
         )
@@ -303,7 +303,7 @@ class b_RunManagement(unittest.TestCase):
         self.assertEqual(runs_t1_1min[0].run_idk, run_t1_1min.run_idk)
 
         runs_t1_5min = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=t1_5min_sset,
             since=dt.utcnow() - td(days=1)
         )
@@ -311,7 +311,7 @@ class b_RunManagement(unittest.TestCase):
         self.assertEqual(runs_t1_5min[0].run_idk, run_t1_5min.run_idk)
 
         runs_t2_5min = tasks.RunItem.get_all(
-            task_id=task_id_2,
+            task=task_id_2,
             schedule=t2_5min_sset,
             since=dt.utcnow() - td(days=1)
         )
@@ -319,8 +319,7 @@ class b_RunManagement(unittest.TestCase):
         self.assertEqual(runs_t2_5min[0].run_idk, run_t2_5min.run_idk)
 
         runs_t1_all = tasks.RunItem.get_all(
-            task_id=task_id,
-            schedule=None,
+            task=task_id,
             since=dt.utcnow() - td(days=1)
         )
 
@@ -343,39 +342,24 @@ class b_RunManagement(unittest.TestCase):
 
         run_t1_1min = task_1.schedule_run(schedule=task_1.schedule_sets[0])
 
-        queued_runs = tasks.RunItem.get_all_queued(
-            task_id=task_id,
-            schedule=None
-        )
+        queued_runs = tasks.RunItem.get_all_queued(task=task_id)
         self.assertEqual(len(queued_runs), 1)
         self.assertEqual(queued_runs[0].run_idk, run_t1_1min.run_idk)
 
-        running_runs = tasks.RunItem.get_running_runs(
-            task_id=task_id,
-            schedule=None
-        )
+        running_runs = tasks.RunItem.get_running_runs(task=task_id)
         self.assertEqual(len(running_runs), 0)
 
         run_t1_1min.set_running(output={'test': 'output'})
-        running_runs = tasks.RunItem.get_running_runs(
-            task_id=task_id,
-            schedule=None
-        )
+        running_runs = tasks.RunItem.get_running_runs(task=task_id)
         self.assertEqual(len(running_runs), 1)
         self.assertEqual(running_runs[0].run_idk, run_t1_1min.run_idk)
         self.assertEqual(running_runs[0].output, {'test': 'output'})
 
         run_t1_1min.set_success(output={'test': 'success'})
-        running_runs = tasks.RunItem.get_running_runs(
-            task_id=task_id,
-            schedule=None
-        )
+        running_runs = tasks.RunItem.get_running_runs(task=task_id)
         self.assertEqual(len(running_runs), 0)
 
-        queued_runs = tasks.RunItem.get_all_queued(
-            task_id=task_id,
-            schedule=None
-        )
+        queued_runs = tasks.RunItem.get_all_queued(task=task_id)
         self.assertEqual(len(queued_runs), 0)
 
 
@@ -416,22 +400,20 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         # and isn't assigned to the task, so it should raise an exception
         with self.assertRaises(Exception):
             t1_runs = tasks.RunItem.get_all(
-                task_id=task_id,
+                task=task_id,
                 schedule=s_set_1min,
                 since=dt.utcnow() - td(days=1)
             )
 
         # make sure we have no runs
         t1_runs = tasks.RunItem.get_all(
-            task_id=task_id,
-            schedule=None,
+            task=task_id,
             since=dt.utcnow() - td(days=1)
         )
         self.assertEqual(len(t1_runs), 0)
 
         t2_runs = tasks.RunItem.get_all(
-            task_id=task_id_2,
-            schedule=None,
+            task=task_id_2,
             since=dt.utcnow() - td(days=1)
         )
         self.assertEqual(len(t2_runs), 0)
@@ -441,21 +423,21 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
 
         # make sure the runs are associated with the correct tasks and scheduled
         runs_t1_1min = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task_1.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
         self.assertEqual(len(runs_t1_1min), 1)
 
         runs_t1_5min = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task_1.schedule_sets[1],
             since=dt.utcnow() - td(days=1)
         )
         self.assertEqual(len(runs_t1_5min), 1)
 
         runs_t2_5min = tasks.RunItem.get_all(
-            task_id=task_id_2,
+            task=task_id_2,
             schedule=task_2.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
@@ -466,7 +448,7 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         time.sleep(20)
 
         runs_t1_1min = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task_1.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
@@ -484,7 +466,7 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         time.sleep(30)
 
         runs_t1_1min = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task_1.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
@@ -536,14 +518,14 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         time.sleep(20)
         # get the runs and make sure they're warn/fail as expected
         runs_warn = tasks.RunItem.get_all(
-            task_id=task_id_warn,
+            task=task_id_warn,
             schedule=task_warn.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
         self.assertEqual(len(runs_warn), 1)
 
         runs_fail = tasks.RunItem.get_all(
-            task_id=task_id_fail,
+            task=task_id_fail,
             schedule=task_fail.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )
@@ -657,7 +639,7 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         time.sleep(30)
 
         run = tasks.RunItem.get_all(
-            task_id=task_id,
+            task=task_id,
             schedule=task.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )[0]
@@ -705,7 +687,7 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         time.sleep(20)
 
         run = tasks.RunItem.get_all(
-            task_id=task_id_2,
+            task=task_id_2,
             schedule=sleep_task.schedule_sets[0],
             since=dt.utcnow() - td(days=1)
         )[0]

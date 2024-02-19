@@ -425,16 +425,10 @@ class TaskItem():
         )
 
     def get_queued_runs(self) -> list[RunItem]:
-        return RunItem.get_all_queued(
-            task_id=self.task_idk,
-            schedule=None
-        )
+        return RunItem.get_all_queued(task=self)
 
     def get_running_runs(self) -> list[RunItem]:
-        return RunItem.get_running_runs(
-            task_id=self.task_idk,
-            schedule=None
-        )
+        return RunItem.get_running_runs(task=self)
 
     def prune_runs(self, max_age: td | None) -> int:
         """
@@ -520,21 +514,18 @@ class RunItem():
     output: dict | None = None
 
     @staticmethod
-    def _task_id_populate(task_id: str | None, task: TaskItem | None) -> tuple[str, TaskItem]:
+    def _task_id_populate(task: str | TaskItem) -> TaskItem:
         """
         Internal function. Populates the unprovided task_id or task used
         by various functions.
         """
-        if task is not None:
-            task_id = task.task_idk
-        elif task_id is not None:
-            task = TaskItem.get(task_id)
-            if task is None:
-                raise Exception(f'Task not found: {task_id}')
-        else:
-            raise Exception('Either task_id or task must be provided')
+        if isinstance(task, TaskItem):
+            return task
 
-        return task_id, task
+        cur_task = TaskItem.get(task)
+        if cur_task is None:
+            raise Exception(f'Internal error: Cannot populate task_id {task}')
+        return  cur_task
 
     @staticmethod
     def create(
@@ -569,8 +560,9 @@ class RunItem():
 
     @staticmethod
     def get_all(
-            schedule: ScheduleSet | None, since: dt,
-            task_id: str | None = None, task: TaskItem | None = None,
+            task: str | TaskItem,
+            since: dt,
+            schedule: ScheduleSet | None = None,
             run_type: RunType | None = None
         ) -> list[RunItem]:
         """
@@ -578,13 +570,14 @@ class RunItem():
         for a particular schedule set (optional, None for all runs)
         """
         confirm_initialised()
-        task_id, task = RunItem._task_id_populate(task_id, task)
+        task = RunItem._task_id_populate(task)
+
         # make sure the schedule set is for this task
         task_schedule_sets = [x.set_idk for x in task.schedule_sets]
         if schedule is not None and schedule.set_idk not in task_schedule_sets:
             raise Exception('Schedule set not found for task')
         pairs = [
-            ('task_idf', '=', task_id),
+            ('task_idf', '=', task.task_idk),
             ('scheduled_time', '>=', since.isoformat())
         ]
         if run_type is not None:
@@ -600,11 +593,14 @@ class RunItem():
         return [RunItem(task, **(x._asdict())) for x in data]
 
     @staticmethod
-    def get_all_queued(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+    def get_all_queued(
+            task: str | TaskItem,
+            schedule: ScheduleSet | None = None,
+        ) -> list[RunItem]:
         confirm_initialised()
-        task_id, task = RunItem._task_id_populate(task_id, task)
+        task = RunItem._task_id_populate(task)
         pairs = [
-            ('task_idf', '=', task_id),
+            ('task_idf', '=', task.task_idk),
             ('status', '=', RunStatus.QUEUED)
         ]
         if schedule is not None:
@@ -618,11 +614,14 @@ class RunItem():
         return [RunItem(task, **(x._asdict())) for x in data]
 
     @staticmethod
-    def get_running_runs(schedule: ScheduleSet | None, task_id: str | None = None, task: TaskItem | None = None) -> list[RunItem]:
+    def get_running_runs(
+            task: str | TaskItem,
+            schedule: ScheduleSet | None = None,
+        ) -> list[RunItem]:
         confirm_initialised()
-        task_id, task = RunItem._task_id_populate(task_id, task)
+        task = RunItem._task_id_populate(task)
         pairs = [
-            ('task_idf', '=', task_id),
+            ('task_idf', '=', task.task_idk),
             ('status', '=', RunStatus.RUNNING)
         ]
         if schedule is not None:
@@ -637,22 +636,28 @@ class RunItem():
 
     @staticmethod
     def get_latest(
-            schedule: ScheduleSet, task_id: str | None = None,
-            task: TaskItem | None = None, run_type: RunType | None = None
+            task: str | TaskItem,
+            schedule: ScheduleSet | None = None,
+            run_type: RunType | None = None
         ) -> RunItem | None:
         confirm_initialised()
-        task_id, task = RunItem._task_id_populate(task_id, task)
+        task = RunItem._task_id_populate(task)
         # To keep query time less dependent on the number of runs in the database
         # we can use the last run time and the time between runs to get the
         # window where the last run should have occurred
-        last_run_time = task.get_last_scheduled(schedule)
-        time_between_runs = task.get_time_between_runs(schedule)
-        runs = RunItem.get_all(
-            task=task,
-            since=last_run_time - time_between_runs*2,
-            schedule=schedule,
-            run_type=run_type
-        )
+        if schedule is not None:
+            last_run_time = task.get_last_scheduled(schedule)
+            time_between_runs = task.get_time_between_runs(schedule)
+            runs = RunItem.get_all(
+                task=task,
+                since=last_run_time - time_between_runs*2,
+                schedule=schedule,
+                run_type=run_type
+            )
+        else:
+            # if we don't have a schedule given, then let the below get_all
+            # grab all runs and filter them
+            runs = []
         if len(runs) == 0:
             # If we didn't get any runs - e.g. when the runner is started up
             # then query the full time window for any last run
