@@ -700,8 +700,3 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         # and make sure it took roughly 5 seconds
         self.assertLess(run.output['run_times'][0]['duration_seconds'], 6)
         self.assertGreater(run.output['run_times'][0]['duration_seconds'], 4)
-
-
-
-
-
