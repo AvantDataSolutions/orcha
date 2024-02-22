@@ -8,7 +8,7 @@ import pandas as pd
 import requests
 from requests.cookies import RequestsCookieJar
 
-from orcha.core.module_base import EntityBase, ModuleBase, module_function
+from orcha.core.module_base import EntityBase, SourceBase, SinkBase, module_function
 
 
 class RestEntity(EntityBase):
@@ -42,7 +42,7 @@ class RestEntity(EntityBase):
 
 
 @dataclass
-class RestSource(ModuleBase):
+class RestSource(SourceBase):
     data_entity: RestEntity | None
     request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
     request_data: dict | str | None = None
@@ -130,3 +130,97 @@ class RestSource(ModuleBase):
                 return self.postprocess(response)
             else:
                 return pd.DataFrame(response.json())
+
+
+@dataclass
+class RestSink(SinkBase):
+    data_entity: RestEntity | None
+    request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
+    sub_path: str | None = None
+    query_params: dict | None = None
+    preprocess: Callable[[dict | str | pd.DataFrame], str] | None = None
+
+    @module_function
+    def save(
+            self,
+            request_data: dict | str | pd.DataFrame,
+            sub_path: str | None = None,
+            query_params: dict | None = None,
+            request_kwargs: dict[str, Any] = {},
+            **kwargs
+        ):
+        """
+        Calls the rest endpoint and returns the response.
+        Appends the sub_path to the url and adds the
+        query_params to the url in the provided entity.
+        Note: The query_params are not validated
+        and any trailing / in the sub_path is not removed.
+        #### Args:
+        - request_data: The data to be sent to the rest endpoint, if this
+        is a dataframe then the preprocess function is used to convert
+        it to
+        - preprocess: A function that takes the provided dataframe
+        and performs any required logic to convert it to
+        a format that can be sent to the rest endpoint.
+
+        """
+        sub_path = sub_path if sub_path is not None else self.sub_path
+        query_params = query_params if query_params is not None else self.query_params
+
+        if self.data_entity is None:
+            raise Exception('No data entity set for sink')
+        else:
+            url_with_query = self.data_entity.url
+            if sub_path is not None:
+                if sub_path[0] != '/':
+                    url_with_query += '/'
+                url_with_query += f'{sub_path}'
+            if query_params is not None:
+                url_with_query += '?'
+                for key, value in query_params.items():
+                    url_with_query += f'{key}={value}&'
+                # Remove the last '&'
+                url_with_query = url_with_query[:-1]
+            if self.data_entity.create_headers is not None:
+                cur_headers = self.data_entity.create_headers()
+            elif self.data_entity.headers is not None:
+                cur_headers = self.data_entity.headers
+            else:
+                cur_headers = {}
+            if self.data_entity.create_cookies is not None:
+                cur_cookies = self.data_entity.create_cookies()
+            elif self.data_entity.cookies is not None:
+                cur_cookies = self.data_entity.cookies
+            else:
+                cur_cookies = None
+
+            if self.preprocess is not None:
+                data = self.preprocess(request_data)
+            elif isinstance(request_data, pd.DataFrame):
+                raise Exception('A preprocess function is required for dataframes')
+            elif isinstance(request_data, str):
+                data = request_data
+            elif isinstance(request_data, dict):
+                data = json.dumps(request_data)
+            else:
+                Exception('Unable to convert request_data to a string')
+
+            if self.data_entity.user_name and self.data_entity.password:
+                _auth = (self.data_entity.user_name, self.data_entity.password)
+            else:
+                _auth = None
+
+            response = requests.request(
+                method=self.request_type,
+                url=url_with_query,
+                auth=_auth,
+                headers=cur_headers,
+                cookies=cur_cookies,
+                data=data,
+                **request_kwargs
+            )
+
+            if response.status_code != 200:
+                raise Exception(f'Response status code is not 200: {response.status_code}')
+            else:
+                return response
