@@ -386,7 +386,7 @@ class TaskItem():
     #         since=dt(2023, 1, 1)
     #     )
 
-    def get_last_run(self, schedule: ScheduleSet) -> RunItem | None:
+    def get_last_run(self, schedule: ScheduleSet | None) -> RunItem | None:
         return RunItem.get_latest(task=self, schedule=schedule)
 
     def get_next_scheduled_time(self, schedule: ScheduleSet | None = None) -> dt:
