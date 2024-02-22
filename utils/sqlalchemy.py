@@ -328,21 +328,34 @@ def mssql_upsert(
 
         def _needs_collation(column_type: str) -> bool:
             collatable_types = ['varchar', 'char', 'text', 'nchar', 'nvarchar', 'ntext']
-            if 'collate' in column_type.lower():
-                return False
             for collatable_type in collatable_types:
                 if collatable_type in column_type.lower():
                     return True
+            return False
+
+        def _alreay_has_collation(column_type: str) -> bool:
+            if 'collate' in column_type.lower():
+                return True
             return False
 
         for column in data.columns:
             column_type = str(table_inspect.columns[column].type)
             # Mostly to handle cases where server collation != db collation
             if _needs_collation(column_type):
-                session.execute(sql(f'''
-                    ALTER TABLE {temp_table}
-                    ALTER COLUMN [{column}] {column_type} COLLATE {collation}
-                '''))
+                # If the column type doesn't already have a collation, then use
+                # the database collation
+                if not _alreay_has_collation(column_type):
+                    session.execute(sql(f'''
+                        ALTER TABLE {temp_table}
+                        ALTER COLUMN [{column}] {column_type} COLLATE {collation}
+                    '''))
+                else:
+                    # otherwise we'll use whatever collation is specified in the
+                    # table column type and remove any extra "
+                    session.execute(sql(f'''
+                        ALTER TABLE {temp_table}
+                        ALTER COLUMN [{column}] {column_type.replace('"', '')}
+                    '''))
         session.execute(sql(f'''
             MERGE {table.schema}.{table.name} WITH (HOLDLOCK, UPDLOCK) AS target
             USING {temp_table} AS source
