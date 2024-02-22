@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import time
-import types
 from dataclasses import dataclass, field
 from datetime import datetime as dt
-from typing import Callable, Literal
+from typing import Callable, Generic, Literal, TypeVar
 
 import pandas as pd
 from sqlalchemy import Column, Index, Table
@@ -267,45 +266,27 @@ class DatabaseSink(SinkBase):
             **kwargs
         )
 
+# Define the type of the inputs for Transformers and Validations
+T = TypeVar('T')
 
 @dataclass
-class TransformBase(ModuleBase):
-    @module_function
-    def transform(self, **kwargs) -> pd.DataFrame:
-        raise NotImplementedError(f'{__class__.__name__} does not implement transform')
+class TransformBase(ModuleBase, Generic[T]):
+    transform_func: Callable[[T], pd.DataFrame]
+    create_inputs: type[T]
 
     @module_function
-    def _do_transform(self, *args, **kwargs) -> pd.DataFrame:
-        return self._func(*args, **kwargs)
-
-    def __setattr__(self, name, value):
-        if name == 'transform' and isinstance(value, types.FunctionType):
-            # essentially we're replacing the transform function with
-            # a proxied function that is already decorated with module_function
-            # this saves us having to do fancy logic to wrap the provided
-            # function with module_function and update its args
-            # the main issue was having to pass the module_base to the function
-            # as the first positional argument
-            self._func = value
-            value = self._do_transform
-        super().__setattr__(name, value)
+    def transform(self, inputs:T, **kwargs) -> pd.DataFrame:
+        return self.transform_func(inputs)
 
 
 @dataclass
-class ValidationBase(ModuleBase):
-    @module_function
-    def validate(self, data: pd.DataFrame, **kwargs) -> bool:
-        raise NotImplementedError(f'{__class__.__name__} does not implement validate')
+class ValidationBase(ModuleBase, Generic[T]):
+    validate_func: Callable[[pd.DataFrame, T], bool]
+    create_inputs: type[T]
 
     @module_function
-    def _do_validate(self, *args, **kwargs) -> pd.DataFrame:
-        return self._func(*args, **kwargs)
-
-    def __setattr__(self, name, value):
-        if name == 'validate' and isinstance(value, types.FunctionType):
-            self._func = value
-            value = self._do_validate
-        super().__setattr__(name, value)
+    def validate(self, data: pd.DataFrame, inputs:T, **kwargs) -> bool:
+        return self.validate_func(data, inputs, **kwargs)
 
 
 @dataclass
