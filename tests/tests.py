@@ -8,7 +8,7 @@ import pandas as pd
 import sqlalchemy
 
 from orcha.core import initialise, scheduler, task_runner, tasks
-from orcha.core.module_base import PythonEntity, PythonSource
+from orcha.core.module_base import PythonEntity, PythonSource, TransformBase
 
 orcha_user = os.getenv('ORCHA_CORE_USER', '')
 orcha_passwd = os.getenv('ORCHA_CORE_PASSWORD', '')
@@ -700,3 +700,69 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         # and make sure it took roughly 5 seconds
         self.assertLess(run.output['run_times'][0]['duration_seconds'], 6)
         self.assertGreater(run.output['run_times'][0]['duration_seconds'], 4)
+
+
+    # test transforms
+    def test_c_005_transforms(self):
+        empty_database()
+        sched.pause()
+
+        entity = PythonEntity(
+            module_idk='test_entity',
+            description='A test entity',
+            user_name='test_user',
+            password='test_password',
+        )
+
+        source = PythonSource(
+            module_idk='test_source',
+            description='A test source',
+            data_entity=entity,
+            function=lambda x: pd.DataFrame({'test': [' 1', '2 ', ' 3 ']})
+        )
+
+        transform = TransformBase[pd.DataFrame](
+            module_idk='test_transform',
+            description='A test transform',
+            transform_func=lambda x: x.map(lambda x: x.strip() if isinstance(x, str) else x),
+            create_inputs=pd.DataFrame
+        )
+
+        def transform_function(task_item, run_item: tasks.RunItem, unknown_dict):
+            data = source.get()
+            data = transform.transform(transform.create_inputs(data=data))
+            run_item.set_output(output={'data': data.to_dict(orient='records')})
+
+        task_uuid = 'c_005_test_task'
+        task_id = f'test_task_{task_uuid}'
+        task = create_test_task(
+            task_number=task_uuid,
+            func=transform_function,
+            register_with_runner=True
+        )
+
+        # testing the module, no need for the scheduler to create the run
+        task.schedule_run(schedule=task.schedule_sets[0])
+
+        # sleep for 30 seconds to allow the run to be picked up
+        time.sleep(20)
+
+        run = tasks.RunItem.get_all(
+            task=task_id,
+            schedule=task.schedule_sets[0],
+            since=dt.utcnow() - td(days=1)
+        )[0]
+        print(run)
+        self.assertEqual(run.status, 'success')
+        assert run.output is not None
+        self.assertEqual(run.output['data'], [{'test': '1'}, {'test': '2'}, {'test': '3'}])
+
+        # and make sure run_times looks like: 'run_times': [{'module_idk': 'test_source', 'start_time_posix': 1708576979.021394, 'end_time_posix': 1708576979.021843, 'duration_seconds': 0.000449, 'retry_count': 0}, {'module_idk': 'test_transform', 'start_time_posix': 1708576979.021911, 'end_time_posix': 1708576979.02236, 'duration_seconds': 0.000449, 'retry_count': 0}]
+        self.assertEqual(len(run.output['run_times']), 2)
+        # make sure all of the keys are in the run_times dict
+        for run_time in run.output['run_times']:
+            self.assertIn('module_idk', run_time)
+            self.assertIn('start_time_posix', run_time)
+            self.assertIn('end_time_posix', run_time)
+            self.assertIn('duration_seconds', run_time)
+            self.assertIn('retry_count', run_time)
