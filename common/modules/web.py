@@ -53,8 +53,9 @@ class RestSource(SourceBase):
     @module_function
     def get(
             self,
-            sub_path: str | None = None,
-            query_params: dict | None = None,
+            sub_path_override: str | None = None,
+            request_data_override: dict | str | None = None,
+            query_params_merge: dict | None = None,
             request_kwargs: dict[str, Any] = {},
             **kwargs
         ) -> pd.DataFrame:
@@ -72,8 +73,24 @@ class RestSource(SourceBase):
         for those set in the source.
         request_kwargs: kwargs are passed to the requests.request method.
         """
-        sub_path = sub_path if sub_path is not None else self.sub_path
-        query_params = query_params if query_params is not None else self.query_params
+        if sub_path_override is not None:
+            sub_path = sub_path_override
+        else:
+            sub_path = self.sub_path
+
+        if self.query_params is not None:
+            if query_params_merge is not None:
+                query_params = self.query_params | query_params_merge
+            else:
+                query_params = self.query_params
+        else:
+            query_params = query_params_merge
+
+        if request_data_override is not None:
+            request_data = request_data_override
+        else:
+            request_data = self.request_data
+
 
         if self.data_entity is None:
             raise Exception('No data entity set for source')
@@ -102,10 +119,10 @@ class RestSource(SourceBase):
             else:
                 cur_cookies = None
 
-            if isinstance(self.request_data, str):
-                data = self.request_data
-            elif isinstance(self.request_data, dict):
-                data = json.dumps(self.request_data)
+            if isinstance(request_data, str):
+                data = request_data
+            elif isinstance(request_data, dict):
+                data = json.dumps(request_data)
             else:
                 data = None
 
@@ -144,8 +161,8 @@ class RestSink(SinkBase):
     def save(
             self,
             request_data: dict | str | pd.DataFrame,
-            sub_path: str | None = None,
-            query_params: dict | None = None,
+            sub_path_override: str | None = None,
+            query_params_merge: dict | None = None,
             request_kwargs: dict[str, Any] = {},
             **kwargs
         ):
@@ -164,8 +181,16 @@ class RestSink(SinkBase):
         a format that can be sent to the rest endpoint.
 
         """
-        sub_path = sub_path if sub_path is not None else self.sub_path
-        query_params = query_params if query_params is not None else self.query_params
+        if sub_path_override is not None:
+            sub_path = sub_path_override
+        else:
+            sub_path = self.sub_path
+
+        if self.query_params is not None:
+            if query_params_merge is not None:
+                query_params = self.query_params | query_params_merge
+            else:
+                query_params = self.query_params
 
         if self.data_entity is None:
             raise Exception('No data entity set for sink')
