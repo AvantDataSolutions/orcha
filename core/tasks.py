@@ -178,6 +178,10 @@ class TaskItem():
 
         confirm_initialised()
 
+        # Legacy checks for old task items from the database
+        # to make sure all fields are correctly set
+        task_tags = task_tags if task_tags is not None else []
+
         # If the schedule sets are passed as a dict, most likely from
         # the database, then convert them to a list of ScheduleSet objects
         sets = []
