@@ -44,7 +44,7 @@ def module_function(func):
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
         # get the number of retries for this module, quietly passed via kwargs
         retry_count = kwargs.get('_orcha_retry_count', 0)
-        retry_exceptions = kwargs.get('retry_exceptions', [])
+        retry_exceptions = kwargs.get('_orcha_retry_exceptions', [])
         if not isinstance(module_config, ModuleConfig):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
         try:
@@ -78,7 +78,7 @@ def module_function(func):
                 # We're trying again, so increase the retry count
                 kwargs['_orcha_retry_count'] = total_attempts
                 retry_exceptions.append(str(e))
-                kwargs['retry_exceptions'] = retry_exceptions
+                kwargs['_orcha_retry_exceptions'] = retry_exceptions
                 time.sleep(module_config.retry_interval)
                 return wrapper(module_base, *args, **kwargs)
     return wrapper
