@@ -230,10 +230,11 @@ class PythonSource(SourceBase):
         if self.data_entity is None:
             raise Exception('No data entity set for source')
         else:
-            # remove _orcha_retry_count from kwargs as it doesn't need it
+            # remove _orcha data from kwargs as it doesn't need it
             # and it will cause an error if it's passed to the function
             kwargs_copy = kwargs.copy()
             kwargs_copy.pop('_orcha_retry_count', None)
+            kwargs_copy.pop('_orcha_retry_exceptions', None)
             return self.function(self.data_entity, **kwargs_copy)
 
 
