@@ -757,7 +757,6 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
         assert run.output is not None
         self.assertEqual(run.output['data'], [{'test': '1'}, {'test': '2'}, {'test': '3'}])
 
-        # and make sure run_times looks like: 'run_times': [{'module_idk': 'test_source', 'start_time_posix': 1708576979.021394, 'end_time_posix': 1708576979.021843, 'duration_seconds': 0.000449, 'retry_count': 0}, {'module_idk': 'test_transform', 'start_time_posix': 1708576979.021911, 'end_time_posix': 1708576979.02236, 'duration_seconds': 0.000449, 'retry_count': 0}]
         self.assertEqual(len(run.output['run_times']), 2)
         # make sure all of the keys are in the run_times dict
         for run_time in run.output['run_times']:
@@ -766,3 +765,4 @@ class c_SchedulerAndRunnerTests(unittest.TestCase):
             self.assertIn('end_time_posix', run_time)
             self.assertIn('duration_seconds', run_time)
             self.assertIn('retry_count', run_time)
+            self.assertIn('retry_exceptions', run_time)
