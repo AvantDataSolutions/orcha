@@ -220,19 +220,13 @@ class Scheduler:
                     if is_due:
                         # TODO Check for old queued/running runs and set them to failed
                         if self.fail_unstarted_runs and last_run is not None:
-                            # If the last run is still queued then set it to failed
-                            # before we create a new run
-                            if last_run.start_time is None and (last_run.status == RunStatus.QUEUED):
-                                last_run.set_failed(
-                                    output={
-                                        'message': 'Run failed to start'
-                                    }
-                                )
+                            # No longer failing runs that are queued and relying on
+                            # the historical run failure and allow task runners to clear any backlog
                             if last_run.status == RunStatus.RUNNING and last_run.last_active is not None:
-                                if last_run.last_active < dt.utcnow() - td(minutes=2):
+                                if last_run.last_active < dt.utcnow() - td(minutes=5):
                                     last_run.set_failed(
                                         output={
-                                            'message': 'Run has been inactive for over 2 minutes'
+                                            'message': 'Run has been inactive for over 5 minutes'
                                         }
                                     )
                         if self.disable_stale_tasks and last_run is not None:
