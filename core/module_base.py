@@ -234,7 +234,7 @@ class PythonSource(SourceBase):
             # and it will cause an error if it's passed to the function
             kwargs_copy = kwargs.copy()
             kwargs_copy.pop('_orcha_retry_count', None)
-            return self.function(self.data_entity, **kwargs)
+            return self.function(self.data_entity, **kwargs_copy)
 
 
 @dataclass
