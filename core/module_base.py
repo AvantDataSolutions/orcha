@@ -43,7 +43,7 @@ def module_function(func):
         # Either use any retry config passed in or use the global one
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
         # get the number of retries for this module, quietly passed via kwargs
-        retry_count = kwargs.get('retry_count', 0)
+        retry_count = kwargs.get('_orcha_retry_count', 0)
         retry_exceptions = kwargs.get('retry_exceptions', [])
         if not isinstance(module_config, ModuleConfig):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
@@ -76,7 +76,7 @@ def module_function(func):
                 raise Exception(f'Exception ({type(e).__name__}) in {module_base.module_idk} module: {e} (total attempts: {total_attempts})')
             else:
                 # We're trying again, so increase the retry count
-                kwargs['retry_count'] = total_attempts
+                kwargs['_orcha_retry_count'] = total_attempts
                 retry_exceptions.append(str(e))
                 kwargs['retry_exceptions'] = retry_exceptions
                 time.sleep(module_config.retry_interval)
@@ -230,6 +230,9 @@ class PythonSource(SourceBase):
         if self.data_entity is None:
             raise Exception('No data entity set for source')
         else:
+            # remove retry_count from kwargs as it doesn't need it
+            kwargs_copy = kwargs.copy()
+            kwargs_copy.pop('_orcha_retry_count', None)
             return self.function(self.data_entity, **kwargs)
 
 

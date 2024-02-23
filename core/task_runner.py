@@ -110,7 +110,7 @@ class TaskRunner():
             #use run.output.get('run_times', [])
             if run.output is not None:
                 for run_time in run.output.get('run_times', []):
-                    if run_time['retry_count'] > 0:
+                    if run_time['_orcha_retry_count'] > 0:
                         run.set_warn({'message': f'Run {run.run_idk} had {run_time["retry_count"]} retries'})
                         return
             # only if it's still running do we want to set it as success,
