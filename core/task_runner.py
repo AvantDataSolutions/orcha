@@ -48,6 +48,8 @@ class ThreadHandler():
     def _run(self):
         while self.is_running:
             for task in self.tasks:
+                # Set the task as active so the scheduler doesn't disable it
+                task.update_active()
                 TaskRunner.process_task(task)
             time.sleep(15)
 
@@ -118,9 +120,6 @@ class TaskRunner():
             # we need to leave it in that state
             if run.status == tasks.RunStatus.RUNNING:
                 run.set_success()
-
-        # Set the task as active so the scheduler doesn't disable it
-        task.update_active()
 
         # Because we have multiple schedules for a task we need
         # to get all the runs that are queued and run them because
