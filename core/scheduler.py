@@ -7,13 +7,44 @@ from datetime import datetime as dt
 from datetime import timedelta as td
 from enum import Enum
 
+from sqlalchemy import Column, DateTime, String
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.orm import Session, sessionmaker
+
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
+from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
 orcha_log = LogManager('orcha')
 
-# TODO terminate nicely: https://itnext.io/containers-terminating-with-grace-d19e0ce34290
-# TODO https://docs.docker.com/engine/reference/commandline/stop/
+Base: DeclarativeMeta
+engine: Engine
+s_maker: sessionmaker[Session]
+
+
+def setup_sqlalchemy(
+        orcha_user: str, orcha_pass: str,
+        orcha_server: str, orcha_db: str,
+        orcha_schema: str
+    ):
+    global is_initialised, Base, engine, s_maker, SchedulerRecord
+    is_initialised = True
+    Base, engine, s_maker = postgres_scaffold(
+        user=orcha_user,
+        passwd=orcha_pass,
+        server=orcha_server,
+        db=orcha_db,
+        schema=orcha_schema
+    )
+
+    class SchedulerRecord(Base):
+        __tablename__ = 'schedulers'
+
+        scheduler_idk = Column(String, primary_key=True)
+        last_active = Column(DateTime(timezone=False))
+
+    sqlalchemy_build(Base, engine, orcha_schema)
 
 
 class RunningState(Enum):
@@ -51,7 +82,7 @@ class OrchaSchedulerConfig:
 class Scheduler:
 
     all_tasks: list[TaskItem] = []
-    last_refresh: float = 0
+    last_refresh: dt = dt.utcnow()
     task_refresh_interval: float
     fail_unstarted_runs: bool
     disable_stale_tasks: bool
@@ -102,6 +133,32 @@ class Scheduler:
         if disable_stale_tasks is not None:
             self.disable_stale_tasks = disable_stale_tasks
             raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
+
+    @staticmethod
+    def get_last_active(scheduler_idk: str = 'main'):
+        """
+        Get the last_active time for the scheduler from the database.
+        """
+        with s_maker.begin() as session:
+            record = session.query(SchedulerRecord
+                ).filter_by(scheduler_idk=scheduler_idk
+                ).first()
+            if record is not None:
+                if hasattr(record, 'last_active'):
+                    # TODO fix this type hinting
+                    data: dt = record.last_active # type: ignore
+                    return data
+
+    def update_active(self):
+        """
+        Update the last_active time for the scheduler in the database.
+        """
+        with s_maker.begin() as session:
+            # Using a single scheduler for now
+            session.merge(
+                SchedulerRecord(scheduler_idk='main', last_active=dt.utcnow())
+            )
+            self.last_refresh = dt.utcnow()
 
     def start(self):
         """
@@ -203,12 +260,12 @@ class Scheduler:
     def _process_schedules(self):
         while self.running_state != RunningState.stopped:
             time.sleep(15)
+            self.update_active()
             # Loop while we're not stopped, but only do stuff if we're running
             if self.running_state != RunningState.running:
                 continue
 
             if len(self.all_tasks) == 0:
-                self.last_refresh = time.time()
                 self.all_tasks = TaskItem.get_all()
 
             for task in self.all_tasks:

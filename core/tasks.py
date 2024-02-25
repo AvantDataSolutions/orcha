@@ -25,8 +25,6 @@ print('Loading:',__name__)
 
 is_initialised = False
 
-ORCHA_SCHEMA = 'orcha'
-
 Base: DeclarativeMeta
 engine: Engine
 s_maker: sessionmaker[Session]
@@ -48,7 +46,8 @@ def confirm_initialised():
 
 def setup_sqlalchemy(
         orcha_user: str, orcha_pass: str,
-        orcha_server: str, orcha_db: str
+        orcha_server: str, orcha_db: str,
+        orcha_schema: str
     ):
     global is_initialised, Base, engine, s_maker, TaskRecord, RunRecord
     is_initialised = True
@@ -57,7 +56,7 @@ def setup_sqlalchemy(
         passwd=orcha_pass,
         server=orcha_server,
         db=orcha_db,
-        schema=ORCHA_SCHEMA
+        schema=orcha_schema
     )
     class TaskRecord(Base):
         __tablename__ = 'tasks'
@@ -90,7 +89,7 @@ def setup_sqlalchemy(
         output = Column(PG_JSON)
 
 
-    sqlalchemy_build(Base, engine, ORCHA_SCHEMA)
+    sqlalchemy_build(Base, engine, orcha_schema)
 
     # Critical index for the performace of fetching runs
     with s_maker.begin() as tx:
