@@ -113,7 +113,14 @@ class TaskRunner():
             if run.output is not None:
                 for run_time in run.output.get('run_times', []):
                     if run_time['retry_count'] > 0:
-                        run.set_warn({'message': f'Run {run.run_idk} had {run_time["retry_count"]} retries'})
+                        message = f'Run {run.run_idk} had {run_time["retry_count"]} retries'
+                        # Only set it as a warning if it hasn't failed already
+                        # and explicitly set the retry_message not message to avoid overwriting
+                        # any other failed messages
+                        if run.status == tasks.RunStatus.FAILED:
+                            run.set_output({'retry_message': message}, merge=True)
+                        else:
+                            run.set_warn({'message': message})
                         return
             # only if it's still running do we want to set it as success,
             # otherwise it's already been set as failed, warn, etc and
