@@ -124,7 +124,7 @@ class AutomationTemplateItem(pydantic_utils.BaseModelExtended):
     @classmethod
     def get_all(cls):
         with Session.begin() as tx:
-            tpls = tx.execute(sql(f'''
+            tpls = tx.execute(sql('''
                 SELECT
                     template_key, template_name, template_description,
                     template_schedules, template_triggers, template_category,
@@ -200,7 +200,7 @@ def trigger_automation(template_key: str):
 
 def get_groups():
     with Session.begin() as tx:
-        data = tx.execute(sql(f'''
+        data = tx.execute(sql('''
             SELECT
                 group_key::text, group_name, group_owner_email,
                 group_visible_description, group_status
@@ -265,7 +265,7 @@ def update_group(group_key: str, name: str, email: str,
 
 def get_emails(group_key: str):
     with Session.begin() as tx:
-        data = tx.execute(sql(f'''
+        data = tx.execute(sql('''
             SELECT
                 email_key::text, email_group_key::text, email_address,
                 email_name, email_frequency, email_status
@@ -278,7 +278,7 @@ def get_emails(group_key: str):
 
 def get_emails_for_group(group_name: str):
     with Session.begin() as tx:
-        data = tx.execute(sql(f'''
+        data = tx.execute(sql('''
             SELECT
                 gr.group_owner_email, gr.group_visible_description,
                 em.email_address, em.email_name, em.email_key::text
@@ -326,7 +326,7 @@ def update_email(email_key: str, group_key: str, name: str,
 def get_groups_for_user(user_email: str):
     # get all groups a user is a member of
     with Session.begin() as tx:
-        data = tx.execute(sql(f'''
+        data = tx.execute(sql('''
             SELECT
                 em.email_key::text, em.email_status,
                 em.email_address,
