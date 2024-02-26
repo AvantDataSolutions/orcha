@@ -139,15 +139,20 @@ class TaskRunner():
         for run in queued_runs:
             try:
                 running_dict[run.run_idk] = True
-                timeout = run.config.get('timeout', TaskRunner.task_timeout)
                 ra_thread = threading.Thread(target=_refresh_active, args=(run,))
                 ra_thread.start()
-                run_function_with_timeout(
-                    timeout=timeout,
-                    message=f'Task {task.name} with run_id {run.run_idk} timed out (timeout: {timeout}s)',
-                    func=_run_wrapper,
-                    run=run
-                )
+                # Temporary fix to disable timeouts
+                use_timeouts = False
+                if use_timeouts:
+                    timeout = run.config.get('timeout', TaskRunner.task_timeout)
+                    run_function_with_timeout(
+                        timeout=timeout,
+                        message=f'Task {task.name} with run_id {run.run_idk} timed out (timeout: {timeout}s)',
+                        func=_run_wrapper,
+                        run=run
+                    )
+                else:
+                    _run_wrapper(run)
                 running_dict[run.run_idk] = False
             except Exception as e:
                 run.set_failed(output={
