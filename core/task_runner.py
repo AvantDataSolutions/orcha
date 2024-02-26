@@ -211,3 +211,29 @@ class TaskRunner():
             if handler.thread_group == BASE_THREAD_GROUP and not stop_base:
                 continue
             handler.stop()
+
+    def start_all(self, start_base = True):
+        """
+        This starts all the threads that have been registered
+        and restarts any that are not alive.
+        """
+        for handler in self.handlers.values():
+            if handler.thread_group == BASE_THREAD_GROUP and not start_base:
+                continue
+            if handler.thread is None or not handler.thread.is_alive():
+                handler.start()
+
+    def all_alive(self):
+        """
+        Returns True if all the threads are alive or returns the
+        thread groups that are not alive.
+        """
+        alive = True
+        not_alive = []
+        for handler in self.handlers.values():
+            if handler.thread is None or not handler.thread.is_alive():
+                not_alive.append(handler.thread_group)
+                alive = False
+        if not alive:
+            return not_alive
+        return alive
