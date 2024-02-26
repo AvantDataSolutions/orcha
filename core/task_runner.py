@@ -45,25 +45,34 @@ class ThreadHandler():
                 if t.task_idk == task.task_idk:
                     self.tasks[i] = task
 
+    def update_active_all_tasks(self):
+        """
+        This sets all tasks as active in this thread group, as when one task
+        is running, all tasks should be considered active as this thread
+        will handle all of these tasks, even if its handling a long running task.
+        """
+        # Without this, if one task runs for 5 minutes, all other tasks will get
+        # marked as inactive by the scheduler as they won't have been updated
+        for task in self.tasks:
+            task.update_active()
+
     def _run(self):
         while self.is_running:
             for task in self.tasks:
-                # Set the task as active so the scheduler doesn't disable it
-                task.update_active()
-                TaskRunner.process_task(task)
+                # Update all tasks as active outside of processing the task
+                # to make sure we get at least one guaranteed update
+                self.update_active_all_tasks()
+                self.process_task(task)
             time.sleep(15)
 
+    def process_all_tasks(self):
+        """
+        Helper function to process all tasks in the handler
+        """
+        for task in self.tasks:
+            self.process_task(task)
 
-class TaskRunner():
-
-    handlers: dict[str, ThreadHandler] = {}
-    task_timeout: int = 1800
-    """
-    Default task timeout in seconds, unless specified in the schedule config
-    """
-
-    @staticmethod
-    def process_task(task: TaskItem):
+    def process_task(self, task: TaskItem):
         # Run in a second thread to tick over the active time
         # this is mostly here if something crashes and the
         # task never finishes, so we can check for stale active
@@ -74,6 +83,7 @@ class TaskRunner():
                 while running_dict[run.run_idk]:
                     _update_run_times(run)
                     run.update_active()
+                    self.update_active_all_tasks()
                     time.sleep(30)
                 # remove the run from the running dict to avoid
                 # long running threads from taking up memory
@@ -142,7 +152,7 @@ class TaskRunner():
                 ra_thread = threading.Thread(target=_refresh_active, args=(run,))
                 ra_thread.start()
                 # Temporary fix to disable timeouts
-                use_timeouts = False
+                use_timeouts = True
                 if use_timeouts:
                     timeout = run.config.get('timeout', TaskRunner.task_timeout)
                     run_function_with_timeout(
@@ -163,6 +173,15 @@ class TaskRunner():
                 # catch the KeyError and stop itself
                 running_dict.pop(run.run_idk)
                 continue
+
+
+class TaskRunner():
+
+    handlers: dict[str, ThreadHandler] = {}
+    task_timeout: int = 1800
+    """
+    Default task timeout in seconds, unless specified in the schedule config
+    """
 
     def __init__(
             self,
@@ -203,8 +222,7 @@ class TaskRunner():
 
     def process_all_tasks(self):
         for handler in self.handlers.values():
-            for task in handler.tasks:
-                TaskRunner.process_task(task)
+            handler.process_all_tasks()
 
     def stop_all(self, stop_base = False):
         for handler in self.handlers.values():

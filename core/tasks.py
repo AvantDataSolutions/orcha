@@ -345,12 +345,20 @@ class TaskItem():
         self.version = dt.utcnow()
         self._update_db()
 
+    def set_enabled(self, notes: str) -> None:
+        if self.status == 'enabled':
+            return
+        self.set_status('enabled', notes)
+
     def update_active(self) -> None:
         """
         Used to indicate to the scheduler the last time the task was active.
         Old tasks that have not been active for a while will be automatically
-        disabled by the scheduler.
+        disabled by the scheduler. This will reactivate any task that has been
+        disabled due to inactivity by the scheduler.
         """
+        if self.status == 'inactive':
+            self.set_enabled('update_active reactivated task')
         self.last_active = dt.utcnow()
         self._update_db()
 
