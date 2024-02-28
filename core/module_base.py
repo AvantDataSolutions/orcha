@@ -49,7 +49,12 @@ def module_function(func):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
         try:
             start_time = dt.now()
-            return_value = func(module_base, *args, **kwargs)
+            # Remove any _orcha specific kwargs as they can cause downstream
+            # functions that don't accept kwargs to fail
+            func_kwargs = kwargs.copy()
+            func_kwargs.pop('_orcha_retry_count', None)
+            func_kwargs.pop('_orcha_retry_exceptions', None)
+            return_value = func(module_base, *args, **func_kwargs)
             end_time = dt.now()
             # get any existing runs
             # if we're running outside of the scheduler
