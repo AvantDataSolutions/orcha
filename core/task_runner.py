@@ -119,7 +119,6 @@ class ThreadHandler():
             # When complete, also update run times
             _update_run_times(run)
             # if any of the current_run_times have a retry_count > 0 then set status as WARN
-            #use run.output.get('run_times', [])
             if run.output is not None:
                 for run_time in run.output.get('run_times', []):
                     if run_time['retry_count'] > 0:
@@ -142,10 +141,6 @@ class ThreadHandler():
         # to get all the runs that are queued and run them because
         # some schedules will have runs queued at the same time
         queued_runs = task.get_queued_runs()
-        # last_run = task.get_last_run()
-        # if last_run is None or last_run.status != RunStatus.QUEUED:
-        #     return
-        # queued_runs = [last_run]
         for run in queued_runs:
             try:
                 running_dict[run.run_idk] = True
