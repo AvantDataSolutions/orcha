@@ -6,7 +6,7 @@ from datetime import datetime as dt
 from typing import Callable, Generic, Literal, TypeVar
 
 import pandas as pd
-from sqlalchemy import Column, Index, Table
+from sqlalchemy import Column, Index, MetaData, Table
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
@@ -150,6 +150,14 @@ class DatabaseEntity(EntityBase):
         self._tables.append(table)
         return table
 
+    def get_database_table(self, schema_name: str, table_name: str) -> Table:
+        """
+        Get a table from the database
+        """
+        if self.engine is None:
+            raise Exception('No engine set')
+
+        return Table(table_name, MetaData(schema=schema_name), autoload_with=self.engine)
 
     def read_sql(self, query: str, **kwargs) -> pd.DataFrame:
         """
