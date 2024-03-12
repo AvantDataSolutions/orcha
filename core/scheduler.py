@@ -43,6 +43,7 @@ def setup_sqlalchemy(
 
         scheduler_idk = Column(String, primary_key=True)
         last_active = Column(DateTime(timezone=False))
+        loaded_at = Column(DateTime(timezone=False))
 
     sqlalchemy_build(Base, engine, orcha_schema)
 
@@ -133,6 +134,36 @@ class Scheduler:
         if disable_stale_tasks is not None:
             self.disable_stale_tasks = disable_stale_tasks
             raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
+
+        # TODO Move to using scheduler_idks as if we run multiple schedulers
+        # we'll only record when the latest one started
+        Scheduler.set_loaded_at()
+
+    @staticmethod
+    def set_loaded_at(scheduler_idk: str = 'main'):
+        """
+        Set the loaded_at time for the scheduler in the database.
+        """
+        with s_maker.begin() as session:
+            # Using a single scheduler for now
+            session.merge(
+                SchedulerRecord(scheduler_idk='main', loaded_at=dt.utcnow())
+            )
+
+    @staticmethod
+    def get_loaded_at(scheduler_idk: str = 'main'):
+        """
+        Get the loaded_at time for the scheduler from the database.
+        """
+        with s_maker.begin() as session:
+            record = session.query(SchedulerRecord
+                ).filter_by(scheduler_idk=scheduler_idk
+                ).first()
+            if record is not None:
+                if hasattr(record, 'loaded_at'):
+                    # TODO fix this type hinting
+                    data: dt = record.loaded_at # type: ignore
+                    return data
 
     @staticmethod
     def get_last_active(scheduler_idk: str = 'main'):
