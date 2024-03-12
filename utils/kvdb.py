@@ -24,16 +24,28 @@ class KvdbItem():
 
 def store(
         storage_type: Literal['postgres', 'local', 'global'],
-        key: str, value: Any, expiry: td | None = None
+        key: str, value: Any, expiry: td | None = None,
+        thread_name = threading.current_thread().name
     ):
+    """
+    Store a value in the store.
+    #### Arguments
+    - `storage_type`: The type of storage to store the value in.
+    - `key`: The key to store the value under.
+    - `value`: The value to store.
+    - `expiry`: The time to expire the value.
+    - `thread_name`: The name of the thread to store the value in.
+        Defaults to the current thread's name. However
+        can be used to share a common store between threads.
+    """
     if storage_type == 'postgres':
         raise Exception('Postgres kvdb storage not implemented')
     elif storage_type == 'local':
         exp_time = dt.utcnow() + expiry if expiry else None
         item = KvdbItem(storage_type, key, value, type(value).__name__, exp_time)
-        if threading.current_thread().name not in store_threaded:
-            store_threaded[threading.current_thread().name] = {}
-        store_threaded[threading.current_thread().name][key] = item
+        if thread_name not in store_threaded:
+            store_threaded[thread_name] = {}
+        store_threaded[thread_name][key] = item
     elif storage_type == 'global':
         raise Exception('Global kvdb storage not implemented')
 
@@ -41,16 +53,32 @@ def store(
 def get(
         key: str, as_type: Type[T],
         storage_type: Literal['postgres', 'local', 'global'],
-        no_key_return: Literal['none', 'exception'] = 'none'
+        no_key_return: Literal['none', 'exception'] = 'none',
+        thread_name = threading.current_thread().name
     ) -> Union[T, None]:
+    """
+    Get a value from the store.
+    #### Arguments
+    - `key`: The key to get from the store.
+    - `as_type`: The type to cast the value to.
+    - `storage_type`: The type of storage to get the value from.
+    - `no_key_return`: What to do if the key is not found in the store. Options are:
+        - `'none'`: Return `None`.
+        - `'exception'`: Raise an exception.
+    - `thread_name`: The name of the thread to get the value from.
+        Defaults to the current thread's name. However
+        can be used to share a common store between threads.
+    #### Returns
+    The value from the store in the specified type.
+    """
     result = None
-    if threading.current_thread().name not in store_threaded:
-        store_threaded[threading.current_thread().name] = {}
+    if thread_name not in store_threaded:
+        store_threaded[thread_name] = {}
     if storage_type == 'postgres':
         raise Exception('Postgres kvdb storage not implemented')
     elif storage_type == 'local':
-        if key in store_threaded[threading.current_thread().name]:
-            result = store_threaded[threading.current_thread().name][key]
+        if key in store_threaded[thread_name]:
+            result = store_threaded[thread_name][key]
             if result is None:
                 return None
             if result.expiry is not None and result.expiry < dt.utcnow():
