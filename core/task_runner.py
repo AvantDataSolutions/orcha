@@ -78,13 +78,13 @@ class ThreadHandler():
         # task never finishes, so we can check for stale active
         # times and deal with it accordingly
         running_dict = {}
-        def _refresh_active(run: RunItem):
+        def _refresh_active(run: RunItem, thread_name: str):
             try:
                 while running_dict[run.run_idk]:
-                    _update_run_times(run)
+                    _update_run_times(run, thread_name)
                     run.update_active()
                     self.update_active_all_tasks()
-                    time.sleep(30)
+                    time.sleep(15)
                 # remove the run from the running dict to avoid
                 # long running threads from taking up memory
                 running_dict.pop(run.run_idk)
@@ -93,7 +93,7 @@ class ThreadHandler():
                 # which means the run has finished/died
                 pass
 
-        def _update_run_times(run: RunItem):
+        def _update_run_times(run: RunItem, thread_name: str):
             current_run_times = kvdb.get('current_run_times', list, 'local')
             if current_run_times is not None:
                 new_output = {'run_times': current_run_times}
@@ -117,7 +117,7 @@ class ThreadHandler():
             except Exception as e:
                 run_function_store_exception(e)
             # When complete, also update run times
-            _update_run_times(run)
+            _update_run_times(run, threading.current_thread().name)
             # if any of the current_run_times have a retry_count > 0 then set status as WARN
             if run.output is not None:
                 for run_time in run.output.get('run_times', []):
@@ -144,7 +144,13 @@ class ThreadHandler():
         for run in queued_runs:
             try:
                 running_dict[run.run_idk] = True
-                ra_thread = threading.Thread(target=_refresh_active, args=(run,))
+                # We need to allow the _refresh_active function to use the
+                # same store as the run itself to be able to read module
+                # times while the run is in progress and update the output
+                ra_thread = threading.Thread(target=_refresh_active, args=(
+                    run,
+                    threading.current_thread().name,
+                ))
                 ra_thread.start()
                 # Temporary fix to disable timeouts
                 use_timeouts = True
