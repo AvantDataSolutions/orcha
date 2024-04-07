@@ -151,7 +151,7 @@ class DatabaseEntity(EntityBase):
 
     def define_table(
             self, schema_name: str | None,  table_name: str,
-            columns: list[Column], indexes: list[Index] = [],
+            columns: list[Column] = [], indexes: list[Index] = [],
             build=True, match_definition=True
         ):
         """
