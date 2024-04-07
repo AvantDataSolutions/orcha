@@ -129,6 +129,26 @@ class DatabaseEntity(EntityBase):
             else:
                 return None
 
+    def load_table(self, schema_name: str, table_name: str):
+        """
+        Loads a table from the database into the entity. This is a shortcut
+        for registering the table with the entity without having to define it.
+        """
+        if self.engine is None:
+            raise Exception('No engine set')
+        try:
+            t = Table(
+                table_name,
+                MetaData(schema=schema_name),
+                autoload_with=self.engine
+            )
+            self._tables.append(t)
+            return t
+        except Exception as e:
+            raise Exception(
+                f'Error loading table {table_name} from {schema_name} schema'
+            ) from e
+
     def define_table(
             self, schema_name: str | None,  table_name: str,
             columns: list[Column], indexes: list[Index] = [],
