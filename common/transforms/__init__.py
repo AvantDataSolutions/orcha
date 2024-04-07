@@ -1,7 +1,6 @@
-from typing import TypedDict
+from typing import List, Optional, TypedDict
 
 import pandas as pd
-
 from orcha.core.module_base import TransformBase
 
 
@@ -33,4 +32,42 @@ datetime_to_string_transform = TransformBase[td](
     description='Converts all datetimes to strings in the given format',
     transform_func=_datetime_to_string_transform_func,
     create_inputs=td
+)
+
+
+diff_inputs = TypedDict('diff_inputs', {
+    'new_df': pd.DataFrame,
+    'old_df': pd.DataFrame,
+    'diff_on': Optional[List[str]],
+    'add_updated_col': Optional[bool],
+    'updated_col_name': Optional[str]
+})
+
+
+def _keep_changed_transform_func(inputs: diff_inputs, **kwargs) -> pd.DataFrame:
+    new_df = inputs['new_df']
+    old_df = inputs['old_df']
+    diff_on = inputs['diff_on']
+    add_updated = inputs['add_updated_col']
+    updated_name = inputs['updated_col_name']
+    if updated_name is None:
+        updated_name = 'updated_at'
+    if updated_name in new_df.columns:
+        raise ValueError(f'Updated col name "{updated_name}" already exists in new_df')
+
+    merged_df = new_df.merge(old_df, on=diff_on, indicator=True, how='left')
+    changed_rows = merged_df.loc[merged_df['_merge'] == 'left_only']
+    diff_rows = changed_rows.drop(columns='_merge', axis=1)
+
+    if add_updated:
+        diff_rows[updated_name] = pd.Timestamp.utcnow()
+
+    return diff_rows
+
+
+keep_changed_rows_transform = TransformBase[diff_inputs](
+    module_idk='diff_transform',
+    description='Returns only the columns from "new_df" which are not in old_df',
+    transform_func=_keep_changed_transform_func,
+    create_inputs=diff_inputs
 )
