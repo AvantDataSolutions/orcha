@@ -78,7 +78,11 @@ def module_function(func):
         except Exception as e:
             total_attempts = retry_count + 1
             if total_attempts > module_config.max_retries:
-                raise Exception(f'Exception ({type(e).__name__}) in {module_base.module_idk} module: {e} (total attempts: {total_attempts})')
+                raise Exception(
+                    f'Exception ({type(e).__name__}) in \
+                    {module_base.module_idk} module: {e} \
+                    (total attempts: {total_attempts})'
+                ) from e
             else:
                 # We're trying again, so increase the retry count
                 kwargs['_orcha_retry_count'] = total_attempts
