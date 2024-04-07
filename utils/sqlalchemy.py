@@ -305,9 +305,17 @@ def mssql_upsert(
         if len(merge_on) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
 
+        schema_str = str(table.schema)
+        if schema_str is None:
+            raise Exception('Table schema is None')
+        if schema_str[0] != '[':
+            schema_str = '[' + schema_str
+        if schema_str[-1] != ']':
+            schema_str = schema_str + ']'
+
         data.to_sql(
             name=temp_table,
-            schema=f'[{table.schema}]',
+            schema=schema_str,
             con=conn,
             method='multi',
             chunksize=chunksize,
@@ -357,7 +365,7 @@ def mssql_upsert(
                         ALTER COLUMN [{column}] {column_type.replace('"', '')}
                     '''))
         session.execute(sql(f'''
-            MERGE {table.schema}.{table.name} WITH (HOLDLOCK, UPDLOCK) AS target
+            MERGE {schema_str}.{table.name} WITH (HOLDLOCK, UPDLOCK) AS target
             USING {temp_table} AS source
             ON (
                 {' AND '.join(f'source.[{c}] = target.[{c}]' for c in merge_on)}
