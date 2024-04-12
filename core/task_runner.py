@@ -94,7 +94,12 @@ class ThreadHandler():
                 pass
 
         def _update_run_times(run: RunItem, thread_name: str):
-            current_run_times = kvdb.get('current_run_times', list, 'local')
+            current_run_times = kvdb.get(
+                key='current_run_times',
+                as_type=list,
+                storage_type='local',
+                thread_name=thread_name
+            )
             if current_run_times is not None:
                 new_output = {'run_times': current_run_times}
                 run.set_output(new_output, merge=True)
