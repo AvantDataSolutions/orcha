@@ -1,6 +1,7 @@
 
 import time
 import threading
+import traceback
 
 from orcha.core import tasks
 from orcha.core.tasks import TaskItem, RunItem
@@ -172,7 +173,7 @@ class ThreadHandler():
                 running_dict[run.run_idk] = False
             except Exception as e:
                 run.set_failed(output={
-                    'exception': str(e),
+                    'exception':f'{str(e)}, \n' + f'{traceback.format_exc()}'
                 })
                 # if we have an exception the active time thread then just remove
                 # the run from the running dict and let the active timer thread
