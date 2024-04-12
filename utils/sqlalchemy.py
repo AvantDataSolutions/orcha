@@ -28,6 +28,13 @@ from sqlalchemy.sql import text as sql
 
 SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, Engine, sessionmaker[Session]]] = {}
 
+CHUNK_SIZE = 1000
+"""
+mssql has a limit of 1000 rows per insert statement
+however we use this as a general limit for all databases
+to keep performance and memory more consistent across
+all database types
+"""
 
 def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
     """
@@ -230,11 +237,10 @@ def sqlalchemy_replace(
     with session.begin() as db:
         delete_stmt = delete(table)
         db.execute(delete_stmt)
-
         # Chunk data to reduce peak memory usage
         # when converting large dataframes to rows
-        for chunk in range(0, len(data), 5000):
-            rows = data.iloc[chunk:chunk+5000].to_dict('records')
+        for chunk in range(0, len(data), CHUNK_SIZE):
+            rows = data.iloc[chunk:chunk+CHUNK_SIZE].to_dict('records')
             insert_stmt = sqla_insert(table).values(rows)
             db.execute(insert_stmt)
 
@@ -252,7 +258,7 @@ def postgres_upsert(
         index_elements = [column.name for column in table_inspect.primary_key]
         if len(index_elements) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
-        for chunk in [data[i:i+1000] for i in range(0, len(data), 1000)]:
+        for chunk in [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]:
             stmt = pg_insert(table).values(chunk.to_dict('records'))
             update_dict = {}
             for column in table_inspect.columns:
@@ -279,7 +285,7 @@ def sqlite_upsert(
         index_elements = [column.name for column in table_inspect.primary_key]
         if len(index_elements) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
-        for chunk in [data[i:i+1000] for i in range(0, len(data), 1000)]:
+        for chunk in [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]:
             stmt = sqlite_insert(table).values(chunk.to_dict('records'))
             stmt = stmt.prefix_with('OR REPLACE')
             db.execute(stmt)
@@ -299,7 +305,6 @@ def mssql_upsert(
             return None
 
         temp_table = f'#temp_{token_hex(16)}'
-        chunksize = 2100 // len(data.columns)
         merge_on = [column.name for column in table_inspect.primary_key]
 
         if len(merge_on) == 0:
@@ -318,7 +323,7 @@ def mssql_upsert(
             schema=schema_str,
             con=conn,
             method='multi',
-            chunksize=chunksize,
+            chunksize=CHUNK_SIZE,
             index=False,
         )
 
