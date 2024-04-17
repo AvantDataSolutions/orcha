@@ -254,7 +254,7 @@ class TaskItem():
 
         confirm_initialised()
 
-        version = dt.utcnow()
+        version = dt.now()
         current_task = TaskItem.get(task_idk)
         new_s_sets: list[ScheduleSet] = []
         for schedule in schedule_sets:
@@ -342,7 +342,7 @@ class TaskItem():
         self.status = status
         self.notes = notes
         # Toggling status will create a new version
-        self.version = dt.utcnow()
+        self.version = dt.now()
         self._update_db()
 
     def set_enabled(self, notes: str) -> None:
@@ -359,7 +359,7 @@ class TaskItem():
         """
         if self.status == 'inactive':
             self.set_enabled('update_active reactivated task')
-        self.last_active = dt.utcnow()
+        self.last_active = dt.now()
         self._update_db()
 
     def get_schedule_set(self, set_idk: str) -> ScheduleSet | None:
@@ -465,7 +465,7 @@ class TaskItem():
 
             deleted_rows = session.execute(sql(query), {
                 'task_idf': self.task_idk,
-                'date_cutoff': dt.utcnow() - max_age
+                'date_cutoff': dt.now() - max_age
             }).all()
 
             if len(deleted_rows) == 0:
@@ -731,7 +731,7 @@ class RunItem():
             ))
 
     def update_active(self):
-        self.last_active = dt.utcnow()
+        self.last_active = dt.now()
         self._update_db()
 
     def update(
@@ -777,7 +777,7 @@ class RunItem():
 
         self.update(
             status = RunStatus.RUNNING,
-            start_time = dt.utcnow(),
+            start_time = dt.now(),
             end_time = None,
             output = output
         )
@@ -808,7 +808,7 @@ class RunItem():
         self.update(
             status = RunStatus.SUCCESS,
             start_time = self.start_time,
-            end_time = dt.utcnow(),
+            end_time = dt.now(),
             output = output
         )
 
@@ -833,7 +833,7 @@ class RunItem():
         self.update(
             status = RunStatus.WARN,
             start_time = self.start_time,
-            end_time = dt.utcnow(),
+            end_time = dt.now(),
             output = output
         )
 
@@ -853,7 +853,7 @@ class RunItem():
             if db_item.output is not None:
                 output.update(db_item.output)
 
-        failed_time = dt.utcnow()
+        failed_time = dt.now()
         if zero_duration:
             failed_time = self.start_time
 
