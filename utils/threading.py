@@ -22,9 +22,22 @@ def run_function_clear_exception(thread: threading.Thread | None):
         function_exceptions.pop(thread.name, None)
 
 
-def run_function_with_timeout(timeout, message, func, *args, **kwargs):
+def run_function_with_timeout(timeout, message, func, thread_name = None, *args, **kwargs):
+    """
+    Runs a function with a timeout.
+    #### Arguments
+    - `timeout`: The time to wait before raising an exception.
+    - `message`: The message to raise when the timeout is reached.
+    - `func`: The function to run.
+    - `thread_name`: The name of the thread to run the function in.
+        Defaults to the current thread's name. This is typicalled
+        used to 'impersonate' the parent thread.
+    - `*args`: The arguments to pass to the function.
+    - `**kwargs`: The keyword arguments to pass to the function.
+    """
+    t_name = thread_name or threading.current_thread().name
     thread = threading.Thread(
-        name=f'TimeoutThread_{func.__name__}_{str(uuid.uuid4())}',
+        name=t_name,
         target=func,
         args=args,
         kwargs=kwargs

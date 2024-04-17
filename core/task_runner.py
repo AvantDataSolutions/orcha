@@ -79,10 +79,10 @@ class ThreadHandler():
         # task never finishes, so we can check for stale active
         # times and deal with it accordingly
         running_dict = {}
-        def _refresh_active(run: RunItem, thread_name: str):
+        def _refresh_active(run: RunItem):
             try:
                 while running_dict[run.run_idk]:
-                    _update_run_times(run, thread_name)
+                    _update_run_times(run)
                     run.update_active()
                     self.update_active_all_tasks()
                     time.sleep(15)
@@ -94,12 +94,12 @@ class ThreadHandler():
                 # which means the run has finished/died
                 pass
 
-        def _update_run_times(run: RunItem, thread_name: str):
+        def _update_run_times(run: RunItem):
             current_run_times = kvdb.get(
                 key='current_run_times',
                 as_type=list,
                 storage_type='local',
-                thread_name=thread_name
+                thread_name=threading.current_thread().name
             )
             if current_run_times is not None:
                 new_output = {'run_times': current_run_times}
@@ -111,7 +111,12 @@ class ThreadHandler():
             work (kvdb store mostly) in the same 'timeout thread'.
             """
             # Clear any existing runtimes in the current thread
-            kvdb.store('local', 'current_run_times', [])
+            kvdb.store(
+                storage_type='local',
+                key='current_run_times',
+                value=[],
+                thread_name=threading.current_thread().name
+            )
             # Set the run as started so when we update the active time it
             # has the version that has already started otherwise it will
             # set the active time on the unstarted version of the run
@@ -123,7 +128,7 @@ class ThreadHandler():
             except Exception as e:
                 run_function_store_exception(e)
             # When complete, also update run times
-            _update_run_times(run, threading.current_thread().name)
+            _update_run_times(run)
             # if any of the current_run_times have a retry_count > 0 then set status as WARN
             if run.output is not None:
                 for run_time in run.output.get('run_times', []):
@@ -153,10 +158,11 @@ class ThreadHandler():
                 # We need to allow the _refresh_active function to use the
                 # same store as the run itself to be able to read module
                 # times while the run is in progress and update the output
-                ra_thread = threading.Thread(target=_refresh_active, args=(
-                    run,
-                    threading.current_thread().name,
-                ))
+                ra_thread = threading.Thread(
+                    target=_refresh_active,
+                    args=(run,),
+                    name=threading.current_thread().name
+                )
                 ra_thread.start()
                 # Temporary fix to disable timeouts
                 use_timeouts = True
@@ -165,8 +171,9 @@ class ThreadHandler():
                     run_function_with_timeout(
                         timeout=timeout,
                         message=f'Task {task.name} with run_id {run.run_idk} timed out (timeout: {timeout}s)',
+                        thread_name=threading.current_thread().name,
                         func=_run_wrapper,
-                        run=run
+                        run=run,
                     )
                 else:
                     _run_wrapper(run)

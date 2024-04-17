@@ -24,8 +24,9 @@ class KvdbItem():
 
 def store(
         storage_type: Literal['postgres', 'local', 'global'],
-        key: str, value: Any, expiry: td | None = None,
-        thread_name = threading.current_thread().name
+        key: str, value: Any,
+        thread_name,
+        expiry: td | None = None,
     ):
     """
     Store a value in the store.
@@ -53,8 +54,8 @@ def store(
 def get(
         key: str, as_type: Type[T],
         storage_type: Literal['postgres', 'local', 'global'],
+        thread_name,
         no_key_return: Literal['none', 'exception'] = 'none',
-        thread_name = threading.current_thread().name
     ) -> Union[T, None]:
     """
     Get a value from the store.

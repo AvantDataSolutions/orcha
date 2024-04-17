@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime as dt
@@ -48,6 +49,7 @@ def module_function(func):
         if not isinstance(module_config, ModuleConfig):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
         try:
+            thread_name=threading.current_thread().name
             start_time = dt.now()
             # Remove any _orcha specific kwargs as they can cause downstream
             # functions that don't accept kwargs to fail
@@ -59,7 +61,11 @@ def module_function(func):
             # get any existing runs
             # if we're running outside of the scheduler
             # then we won't have a key in the kvdb and will return None
-            current_run_times = kvdb.get('current_run_times', list, 'local')
+            current_run_times = kvdb.get(
+                key='current_run_times', as_type=list,
+                storage_type='local',
+                thread_name=thread_name
+            )
             if current_run_times is None:
                 current_run_times = []
             # then add the new run time to it. We shouldn't have to
@@ -73,7 +79,12 @@ def module_function(func):
                 'retry_count': retry_count,
                 'retry_exceptions': retry_exceptions,
             })
-            kvdb.store('local', 'current_run_times', current_run_times)
+            kvdb.store(
+                storage_type='local',
+                key='current_run_times',
+                value=current_run_times,
+                thread_name=thread_name
+            )
             return return_value
         except Exception as e:
             total_attempts = retry_count + 1
