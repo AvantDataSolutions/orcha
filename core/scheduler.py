@@ -83,7 +83,7 @@ class OrchaSchedulerConfig:
 class Scheduler:
 
     all_tasks: list[TaskItem] = []
-    last_refresh: dt = dt.utcnow()
+    last_refresh: dt = dt.now()
     task_refresh_interval: float
     fail_unstarted_runs: bool
     disable_stale_tasks: bool
@@ -147,7 +147,7 @@ class Scheduler:
         with s_maker.begin() as session:
             # Using a single scheduler for now
             session.merge(
-                SchedulerRecord(scheduler_idk='main', loaded_at=dt.utcnow())
+                SchedulerRecord(scheduler_idk='main', loaded_at=dt.now())
             )
 
     @staticmethod
@@ -187,9 +187,9 @@ class Scheduler:
         with s_maker.begin() as session:
             # Using a single scheduler for now
             session.merge(
-                SchedulerRecord(scheduler_idk='main', last_active=dt.utcnow())
+                SchedulerRecord(scheduler_idk='main', last_active=dt.now())
             )
-            self.last_refresh = dt.utcnow()
+            self.last_refresh = dt.now()
 
     def start(self):
         """
@@ -263,7 +263,7 @@ class Scheduler:
                     open_runs = task.get_running_runs() + task.get_queued_runs()
                     historical_count = 0
                     for run in open_runs:
-                        run_age = dt.utcnow() - run.scheduled_time
+                        run_age = dt.now() - run.scheduled_time
                         if run_age > self.fail_historical_age:
                             run.set_failed(
                                 output={
@@ -311,7 +311,7 @@ class Scheduler:
                             # No longer failing runs that are queued and relying on
                             # the historical run failure and allow task runners to clear any backlog
                             if last_run.status == RunStatus.RUNNING and last_run.last_active is not None:
-                                if last_run.last_active < dt.utcnow() - td(minutes=5):
+                                if last_run.last_active < dt.now() - td(minutes=5):
                                     last_run.set_failed(
                                         output={
                                             'message': 'Run has been inactive for over 5 minutes'
@@ -322,7 +322,7 @@ class Scheduler:
                             # then it's stale and should be disabled.
                             # Tasks should be checked every 5s, and runs at most frequent, every 1 minute
                             # so a task should have been active many times since the last run
-                            if task.last_active < min(last_run.scheduled_time, dt.utcnow() - td(minutes=5)):
+                            if task.last_active < min(last_run.scheduled_time, dt.now() - td(minutes=5)):
                                 task.set_status('inactive', 'Task has been inactive since last scheduled run')
                                 continue
                         # print('Run due for task:', task.task_idk)
