@@ -4,6 +4,7 @@ import uuid
 
 
 function_exceptions: dict[str, Exception] = {}
+timeout_remainders: dict[str, int] = {}
 
 def run_function_store_exception(exec: Exception):
     function_exceptions[threading.current_thread().name] = exec
@@ -43,7 +44,11 @@ def run_function_with_timeout(timeout, message, func, thread_name = None, *args,
         kwargs=kwargs
     )
     thread.start()
-    thread.join(timeout)
+    timeout_chunk = 1
+    timeout_remainders[t_name] = timeout
+    while thread.is_alive() and timeout_remainders[t_name] > 0:
+        thread.join(timeout_chunk)
+        timeout_remainders[t_name] -= timeout_chunk
 
     if thread.is_alive():
         raise Exception(message)

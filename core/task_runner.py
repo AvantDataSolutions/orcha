@@ -6,7 +6,7 @@ import traceback
 from orcha.core import tasks
 from orcha.core.tasks import TaskItem, RunItem
 from orcha.utils import kvdb
-from orcha.utils.threading import run_function_with_timeout, run_function_store_exception
+from orcha.utils import threading as orcha_threading
 
 # TODO terminate nicely
 # https://itnext.io/containers-terminating-with-grace-d19e0ce34290
@@ -80,11 +80,25 @@ class ThreadHandler():
         # times and deal with it accordingly
         running_dict = {}
         def _refresh_active(run: RunItem):
+            """
+            This updates the active time of the run every 15 seconds as
+            well as checking if the run has been cancelled and clearing
+            the timeout_remainders to force-timeout the run.
+            Note: This needs to be run in a separate thread, however with
+            the same thread name as the run itself to allow for the
+            same kvdb store to be the same across the threads.
+            """
             try:
                 while running_dict[run.run_idk]:
                     _update_run_times(run)
                     run.update_active()
                     self.update_active_all_tasks()
+                    run.reload()
+                    # If the run has been cancelled then we need to stop the thread
+                    if run.status == tasks.RunStatus.CANCELLED:
+                        orcha_threading.timeout_remainders[
+                            threading.current_thread().name
+                        ] = 0
                     time.sleep(15)
                 # remove the run from the running dict to avoid
                 # long running threads from taking up memory
@@ -126,7 +140,7 @@ class ThreadHandler():
             try:
                 task.task_function(task, run, run.config)
             except Exception as e:
-                run_function_store_exception(e)
+                orcha_threading.run_function_store_exception(e)
             # When complete, also update run times
             _update_run_times(run)
             # if any of the current_run_times have a retry_count > 0 then set status as WARN
@@ -168,7 +182,7 @@ class ThreadHandler():
                 use_timeouts = True
                 if use_timeouts:
                     timeout = run.config.get('timeout', TaskRunner.task_timeout)
-                    run_function_with_timeout(
+                    orcha_threading.run_function_with_timeout(
                         timeout=timeout,
                         message=f'Task {task.name} with run_id {run.run_idk} timed out (timeout: {timeout}s)',
                         thread_name=threading.current_thread().name,

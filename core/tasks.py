@@ -707,6 +707,12 @@ class RunItem():
                 raise Exception('Task not found')
         return RunItem(task, **(data[0]._asdict()))
 
+    def reload(self):
+        db_data = RunItem.get(self.run_idk, task=self._task)
+        if db_data is None:
+            raise Exception('Run not found in database')
+        self.__dict__.update(db_data.__dict__)
+
     def delete(self) -> None:
         with s_maker.begin() as session:
             session.execute(sql('''
@@ -846,6 +852,9 @@ class RunItem():
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
         if db_item is not None:
+            if db_item.status == RunStatus.CANCELLED:
+                # If a run has been cancelled then leave it as cancelled
+                return
             if db_item.status == RunStatus.FAILED:
                 # if it's already set, we don't
                 # want to update it again
@@ -861,6 +870,32 @@ class RunItem():
             status = RunStatus.FAILED,
             start_time = self.start_time,
             end_time = failed_time,
+            output = output
+        )
+
+    def set_cancelled(self, output: dict = {}, zero_duration = False):
+        """
+        Sets the run as cancelled and sets the end time.
+        Merges the output with any existing output.
+        """
+        db_item = RunItem.get(self.run_idk, task=self._task)
+        if db_item is not None:
+            if db_item.status == RunStatus.CANCELLED:
+                # if it's already set, we don't
+                # want to update it again
+                return
+            if db_item.output is not None:
+                output.update(db_item.output)
+
+
+        cancelled_time = dt.now()
+        if zero_duration:
+            cancelled_time = self.start_time
+
+        self.update(
+            status = RunStatus.CANCELLED,
+            start_time = self.start_time,
+            end_time = cancelled_time,
             output = output
         )
 
