@@ -253,30 +253,53 @@ class Scheduler:
                 })
 
     def _fail_historical(self):
+        """
+        This will fail:
+        - Runs that were scheduled or started but didn't finish within the time
+        - Runs that have been inactive for over 5 minutes
+        """
         while self.running_state != RunningState.stopped:
-            time.sleep(self.fail_historical_interval)
+            # If the scheduler is being started in the same environment as the
+            # task runner, then we need to wait for the task runner to start
+            # and load the tasks before we can check for historical runs
+            # otherwise we won't have any tasks to check
+            time.sleep(60)
             # Loop while we're not stopped, but only do stuff if we're running
             if self.running_state != RunningState.running:
                 continue
-            if self.fail_historical_runs and self.fail_historical_age is not None:
-                for task in self.all_tasks:
-                    open_runs = task.get_running_runs() + task.get_queued_runs()
-                    historical_count = 0
-                    for run in open_runs:
-                        run_age = dt.now() - run.scheduled_time
-                        if run_age > self.fail_historical_age:
-                            run.set_failed(
-                                output={
-                                    'message': 'Historical run failed to start/finish'
-                                },
-                                zero_duration=True
-                            )
-                            historical_count += 1
-                    orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
-                        'task_id': task.task_idk,
-                        'max_age': str(self.fail_historical_age),
-                        'failed_count': historical_count
-                    })
+            if not self.fail_historical_runs or self.fail_historical_age is None:
+                continue
+            for task in self.all_tasks:
+                open_runs = task.get_running_runs() + task.get_queued_runs()
+                historical_count = 0
+                for run in open_runs:
+                    run_age = dt.now() - run.scheduled_time
+                    if run_age > self.fail_historical_age:
+                        run.set_failed(
+                            output={
+                                'message': 'Historical run failed to start/finish'
+                            },
+                            zero_duration=True
+                        )
+                        historical_count += 1
+                    if run.status == RunStatus.RUNNING:
+                        if run.last_active is not None:
+                            if run.last_active < dt.now() - td(minutes=5):
+                                run.set_failed(
+                                    output={
+                                        'message': 'Run has been inactive for over 5 minutes'
+                                    },
+                                    zero_duration=True
+                                )
+                                historical_count += 1
+                orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
+                    'task_id': task.task_idk,
+                    'max_age': str(self.fail_historical_age),
+                    'failed_count': historical_count
+                })
+            # Sleep after each check so on first load it does a check and
+            # flush of all 'old' runs
+            time.sleep(self.fail_historical_interval)
 
     def _refresh_tasks(self):
         while self.running_state != RunningState.stopped:
