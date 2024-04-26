@@ -112,8 +112,7 @@ class ThreadHandler():
             current_run_times = kvdb.get(
                 key='current_run_times',
                 as_type=list,
-                storage_type='local',
-                thread_name=threading.current_thread().name
+                storage_type='local'
             )
             if current_run_times is not None:
                 new_output = {'run_times': current_run_times}
@@ -128,8 +127,7 @@ class ThreadHandler():
             kvdb.store(
                 storage_type='local',
                 key='current_run_times',
-                value=[],
-                thread_name=threading.current_thread().name
+                value=[]
             )
             # Set the run as started so when we update the active time it
             # has the version that has already started otherwise it will

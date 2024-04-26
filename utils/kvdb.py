@@ -25,7 +25,7 @@ class KvdbItem():
 def store(
         storage_type: Literal['postgres', 'local', 'global'],
         key: str, value: Any,
-        thread_name,
+        thread_name: str | None = None,
         expiry: td | None = None,
     ):
     """
@@ -39,6 +39,8 @@ def store(
         Defaults to the current thread's name. However
         can be used to share a common store between threads.
     """
+    if thread_name is None:
+        thread_name = threading.current_thread().name
     if storage_type == 'postgres':
         raise Exception('Postgres kvdb storage not implemented')
     elif storage_type == 'local':
@@ -54,7 +56,7 @@ def store(
 def get(
         key: str, as_type: Type[T],
         storage_type: Literal['postgres', 'local', 'global'],
-        thread_name,
+        thread_name: str | None = None,
         no_key_return: Literal['none', 'exception'] = 'none',
     ) -> Union[T, None]:
     """
@@ -72,6 +74,8 @@ def get(
     #### Returns
     The value from the store in the specified type.
     """
+    if thread_name is None:
+        thread_name = threading.current_thread().name
     result = None
     if thread_name not in store_threaded:
         store_threaded[thread_name] = {}

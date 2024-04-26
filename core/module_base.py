@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime as dt
@@ -49,7 +48,6 @@ def module_function(func):
         if not isinstance(module_config, ModuleConfig):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
         try:
-            thread_name=threading.current_thread().name
             start_time = dt.now()
             # Remove any _orcha specific kwargs as they can cause downstream
             # functions that don't accept kwargs to fail
@@ -63,8 +61,7 @@ def module_function(func):
             # then we won't have a key in the kvdb and will return None
             current_run_times = kvdb.get(
                 key='current_run_times', as_type=list,
-                storage_type='local',
-                thread_name=thread_name
+                storage_type='local'
             )
             if current_run_times is None:
                 current_run_times = []
@@ -82,8 +79,7 @@ def module_function(func):
             kvdb.store(
                 storage_type='local',
                 key='current_run_times',
-                value=current_run_times,
-                thread_name=thread_name
+                value=current_run_times
             )
             return return_value
         except Exception as e:
