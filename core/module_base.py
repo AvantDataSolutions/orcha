@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import wraps
 import time
 from dataclasses import dataclass, field
 from datetime import datetime as dt
@@ -39,6 +40,7 @@ def module_function(func):
     Decorator for module functions that will catch any exceptions and
     raise them with the relevant module information
     """
+    @wraps(func)
     def wrapper(module_base: ModuleBase, *args, **kwargs):
         # Either use any retry config passed in or use the global one
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
@@ -284,6 +286,12 @@ class PythonSource(SourceBase):
 
 @dataclass
 class SinkBase(ModuleBase):
+    """
+    This is the base class for all sinks. This is always extended
+    by a specific sink type; postgres, mysql, etc.
+    While this class is abstract, it is not marked as such and will
+    raise an exception if used directly.
+    """
     data_entity: EntityBase | None
 
     def __init__(self, data_entity: EntityBase) -> None:

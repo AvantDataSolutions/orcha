@@ -23,7 +23,7 @@ engine: Engine
 s_maker: sessionmaker[Session]
 
 
-def setup_sqlalchemy(
+def _setup_sqlalchemy(
         orcha_user: str, orcha_pass: str,
         orcha_server: str, orcha_db: str,
         orcha_schema: str
@@ -49,6 +49,12 @@ def setup_sqlalchemy(
 
 
 class RunningState(Enum):
+    """
+    The running state of the scheduler.
+    - running: The scheduler is running and creating runs.
+    - stopped: The scheduler has been stopped.
+    - paused: Not currently used.
+    """
     running = 'running'
     stopped = 'stopped'
     paused = 'paused'
@@ -81,7 +87,12 @@ class OrchaSchedulerConfig:
 
 
 class Scheduler:
-
+    """
+    The scheduler creates threads and creates runs in the database for
+    tasks that are due to run and other maintenance activities.
+    The scheduler can be run in a separate or the same environment as the
+    task runner.
+    """
     all_tasks: list[TaskItem] = []
     last_refresh: dt = dt.now()
     task_refresh_interval: float
@@ -101,8 +112,7 @@ class Scheduler:
             disable_stale_tasks: bool | None = None,
         ):
         """
-        Initialise the scheduler with the given settings. The scheduler creates
-        threads and creates runs in the database for tasks that are due to run.
+        Initialise the scheduler with the given settings.
         ### Args
         - config(OrchaSchedulerConfig | None = None): The configuration for the scheduler.
         - fail_unstarted_runs: If True, then if a run is due, but the last

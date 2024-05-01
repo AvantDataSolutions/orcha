@@ -44,7 +44,7 @@ def confirm_initialised():
     if not is_initialised:
         raise RuntimeError('orcha not initialised. Call orcha.core.initialise() first')
 
-def setup_sqlalchemy(
+def _setup_sqlalchemy(
         orcha_user: str, orcha_pass: str,
         orcha_server: str, orcha_db: str,
         orcha_schema: str
@@ -496,6 +496,9 @@ class TaskItem():
 
 
 class RunStatus():
+    """
+    The available statuses for a run instance.
+    """
     QUEUED = 'queued'
     RUNNING = 'running'
     SUCCESS = 'success'
@@ -508,6 +511,12 @@ class RunStatus():
         self.text = text
 
 RunType = Literal['scheduled', 'manual', 'retry']
+"""
+The types of runs that can be created.
+- scheduled: A run that is created by the scheduler
+- manual: A run that is created manually as a 'one-off'
+- retry: A run that is created as a retry of a failed run
+"""
 
 @dataclass
 class RunItem():
@@ -523,6 +532,26 @@ class RunItem():
     config: dict
     status: str
     output: dict | None = None
+    """
+        This class manages the run instances for tasks and write data back
+        to the database. It also provides functions to get run instances. An
+        instance of this class is a representation of a run in the database.
+        ### Note: Instanciating this class directly will not create a new run
+        in the database. Use the create function to create a new run.
+        ### Attributes:
+        - _task: The task instance that this run is associated with
+        - run_idk: The unique id for this run
+        - task_idf: The task id for this run
+        - set_idf: The schedule set id for this run
+        - run_type: The type of run (scheduled, manual, retry)
+        - scheduled_time: The time the run was scheduled to run
+        - start_time: The time the run started
+        - end_time: The time the run ended
+        - last_active: The last time the run was active
+        - config: The config for the run from the schedule set
+        - status: The status of the run (queued, running, success, warn, failed, cancelled)
+        - output: The output of the run which includes all outputs from modules and the task function
+    """
 
     @staticmethod
     def _task_id_populate(task: str | TaskItem) -> TaskItem:
@@ -543,6 +572,11 @@ class RunItem():
             task: TaskItem, run_type: RunType,
             schedule: ScheduleSet, scheduled_time: dt
         ) -> RunItem:
+        """
+        Creates a new run instance for a task with a new uuid and
+        'new run' defaults in the database. This is a separate function to the
+        __init__ to keep creating database entries separate from instanciating.
+        """
         confirm_initialised()
 
         run_idk = str(uuid4())
@@ -714,6 +748,10 @@ class RunItem():
         self.__dict__.update(db_data.__dict__)
 
     def delete(self) -> None:
+        """
+        Deletes the run from the database.
+        #### Note: Does not delete the instance, just the database entry.
+        """
         with s_maker.begin() as session:
             session.execute(sql('''
                 DELETE FROM orcha.runs

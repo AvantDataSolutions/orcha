@@ -15,8 +15,8 @@ trim_whitespace_transform = TransformBase[pd.DataFrame](
 )
 
 
-td = TypedDict('td', {'data': pd.DataFrame, 'format': str, 'notnull_as_none': bool})
-def _datetime_to_string_transform_func(inputs: td, **kwargs) -> pd.DataFrame:
+_td = TypedDict('_td', {'data': pd.DataFrame, 'format': str, 'notnull_as_none': bool})
+def _datetime_to_string_transform_func(inputs: _td, **kwargs) -> pd.DataFrame:
     data = inputs['data']
     format = inputs['format']
     notnull_as_none = inputs['notnull_as_none']
@@ -27,15 +27,23 @@ def _datetime_to_string_transform_func(inputs: td, **kwargs) -> pd.DataFrame:
             data[col] = data[col].where(data[col].notnull(), None)
     return data
 
-datetime_to_string_transform = TransformBase[td](
+datetime_to_string_transform = TransformBase[_td](
     module_idk='datetime_to_string_transform',
     description='Converts all datetimes to strings in the given format',
     transform_func=_datetime_to_string_transform_func,
-    create_inputs=td
+    create_inputs=_td
 )
+"""
+Transform that converts all datetime columns to strings in the given format
+and optionally replaces NaT with None, typically useful for writing to SQL databases
+### Inputs
+- `data` (pd.DataFrame): The DataFrame to transform
+- `format` (str): The format to convert the datetime to
+- `notnull_as_none` (bool): If True, replaces NaT with None
+"""
 
 
-diff_inputs = TypedDict('diff_inputs', {
+_diff_inputs = TypedDict('_diff_inputs', {
     'new_df': pd.DataFrame,
     'old_df': pd.DataFrame,
     'diff_on': Optional[List[str]],
@@ -44,7 +52,7 @@ diff_inputs = TypedDict('diff_inputs', {
 })
 
 
-def _keep_changed_transform_func(inputs: diff_inputs, **kwargs) -> pd.DataFrame:
+def _keep_changed_transform_func(inputs: _diff_inputs, **kwargs) -> pd.DataFrame:
     new_df = inputs['new_df']
     old_df = inputs['old_df']
     diff_on = inputs['diff_on']
@@ -65,9 +73,9 @@ def _keep_changed_transform_func(inputs: diff_inputs, **kwargs) -> pd.DataFrame:
     return diff_rows
 
 
-keep_changed_rows_transform = TransformBase[diff_inputs](
+keep_changed_rows_transform = TransformBase[_diff_inputs](
     module_idk='diff_transform',
     description='Returns only the columns from "new_df" which are not in old_df',
     transform_func=_keep_changed_transform_func,
-    create_inputs=diff_inputs
+    create_inputs=_diff_inputs
 )
