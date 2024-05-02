@@ -394,7 +394,7 @@ generator = DocstringToDocs(
 
 full_html = generator.generate_docs()
 
-with open('docs.html', 'w') as f:
+with open('index.html', 'w') as f:
     f.write(full_html)
 
 print(generator.get_all_modules())
