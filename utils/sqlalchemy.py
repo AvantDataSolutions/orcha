@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker, declarative_base
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import text as sql
 
-SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, Engine, sessionmaker[Session]]] = {}
+_SCAFFOLD_CACHE: dict[str, tuple[DeclarativeMeta, Engine, sessionmaker[Session]]] = {}
 
 CHUNK_SIZE = 1000
 """
@@ -59,13 +59,13 @@ def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str)
     and returns the SQLAlchemy Base object, engine and sessionmaker.
     Postgres specific connection parameters are set here.
     """
-    if schema not in SCAFFOLD_CACHE:
+    if schema not in _SCAFFOLD_CACHE:
         engine, session = postgres_partial_scaffold(user, passwd, server, db)
         Base = declarative_base(metadata=MetaData(schema=schema))
 
-        SCAFFOLD_CACHE[schema] = (Base, engine, session)
-    if schema in SCAFFOLD_CACHE:
-        return SCAFFOLD_CACHE[schema]
+        _SCAFFOLD_CACHE[schema] = (Base, engine, session)
+    if schema in _SCAFFOLD_CACHE:
+        return _SCAFFOLD_CACHE[schema]
     else:
         raise Exception('Failed to create scaffold for: ' + schema)
 
