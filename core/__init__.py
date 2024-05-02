@@ -1,7 +1,7 @@
 from orcha.core import tasks, scheduler
 from orcha.utils.log import LogManager
 
-ORCHA_SCHEMA = 'orcha'
+_ORCHA_SCHEMA = 'orcha'
 
 def initialise(
         orcha_user: str, orcha_pass: str,
@@ -20,7 +20,7 @@ def initialise(
         orcha_pass=orcha_pass,
         orcha_server=orcha_server,
         orcha_db=orcha_db,
-        orcha_schema=ORCHA_SCHEMA
+        orcha_schema=_ORCHA_SCHEMA
     )
 
     scheduler._setup_sqlalchemy(
@@ -28,7 +28,7 @@ def initialise(
         orcha_pass=orcha_pass,
         orcha_server=orcha_server,
         orcha_db=orcha_db,
-        orcha_schema=ORCHA_SCHEMA
+        orcha_schema=_ORCHA_SCHEMA
     )
 
     LogManager._setup_sqlalchemy(

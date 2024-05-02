@@ -104,6 +104,10 @@ def module_function(func):
 
 @dataclass
 class ModuleBase():
+    """
+    This is the base class for all modules. It provides a consistent module_idk
+    and description for all modules.
+    """
     module_idk: str
     description: str
     # TODO Some form of lineage
@@ -113,6 +117,13 @@ class ModuleBase():
 
 @dataclass
 class EntityBase(ModuleBase):
+    """
+    The base class for all entities which provides authentication
+    details for sources and sinks to support convenient ways to
+    swap in different credentials for dev, prod, etc.
+    This is typically extended by a specific entity type; postgres,
+    mysql, etc. to provide auth handling for that entity type.
+    """
     user_name: str
     password: str
 

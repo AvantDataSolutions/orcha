@@ -9,12 +9,12 @@ print('Loading:',__name__)
 
 T = TypeVar('T')
 
-store_threaded = {}
-store_global = {}
+_store_threaded = {}
+_store_global = {}
 
 
 @dataclass
-class KvdbItem():
+class _KvdbItem():
     storage_type: Literal['postgres', 'local', 'global']
     key: str
     value: Any
@@ -45,10 +45,10 @@ def store(
         raise Exception('Postgres kvdb storage not implemented')
     elif storage_type == 'local':
         exp_time = dt.utcnow() + expiry if expiry else None
-        item = KvdbItem(storage_type, key, value, type(value).__name__, exp_time)
-        if thread_name not in store_threaded:
-            store_threaded[thread_name] = {}
-        store_threaded[thread_name][key] = item
+        item = _KvdbItem(storage_type, key, value, type(value).__name__, exp_time)
+        if thread_name not in _store_threaded:
+            _store_threaded[thread_name] = {}
+        _store_threaded[thread_name][key] = item
     elif storage_type == 'global':
         raise Exception('Global kvdb storage not implemented')
 
@@ -77,13 +77,13 @@ def get(
     if thread_name is None:
         thread_name = threading.current_thread().name
     result = None
-    if thread_name not in store_threaded:
-        store_threaded[thread_name] = {}
+    if thread_name not in _store_threaded:
+        _store_threaded[thread_name] = {}
     if storage_type == 'postgres':
         raise Exception('Postgres kvdb storage not implemented')
     elif storage_type == 'local':
-        if key in store_threaded[thread_name]:
-            result = store_threaded[thread_name][key]
+        if key in _store_threaded[thread_name]:
+            result = _store_threaded[thread_name][key]
             if result is None:
                 return None
             if result.expiry is not None and result.expiry < dt.utcnow():
