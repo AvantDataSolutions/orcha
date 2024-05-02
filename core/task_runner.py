@@ -96,9 +96,9 @@ class ThreadHandler():
                     run.reload()
                     # If the run has been cancelled then we need to stop the thread
                     if run.status == tasks.RunStatus.CANCELLED:
-                        orcha_threading.timeout_remainders[
+                        orcha_threading.expire_timeout_remainder(
                             threading.current_thread().name
-                        ] = 0
+                        )
                     time.sleep(15)
                 # remove the run from the running dict to avoid
                 # long running threads from taking up memory

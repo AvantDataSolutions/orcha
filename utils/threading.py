@@ -1,13 +1,20 @@
 from __future__ import annotations
 import threading
-import uuid
 
 
-function_exceptions: dict[str, Exception] = {}
-timeout_remainders: dict[str, int] = {}
+_function_exceptions: dict[str, Exception] = {}
+_timeout_remainders: dict[str, int] = {}
+
+
+def expire_timeout_remainder(thread_name):
+    """
+    Expires the timeout remainder for a thread.
+    """
+    _timeout_remainders[thread_name] = 0
+
 
 def run_function_store_exception(exec: Exception):
-    function_exceptions[threading.current_thread().name] = exec
+    _function_exceptions[threading.current_thread().name] = exec
 
 
 def run_function_get_exception(thread: threading.Thread | None):
@@ -18,8 +25,8 @@ def run_function_get_exception(thread: threading.Thread | None):
     # Must pop the exception from the global store otherwise
     # every time this thread runs again it'll return this exception.
     if thread is None:
-        return function_exceptions.pop(threading.current_thread().name, None)
-    return function_exceptions.pop(thread.name, None)
+        return _function_exceptions.pop(threading.current_thread().name, None)
+    return _function_exceptions.pop(thread.name, None)
 
 
 def run_function_with_timeout(timeout, message, func, thread_name = None, *args, **kwargs):
@@ -44,10 +51,10 @@ def run_function_with_timeout(timeout, message, func, thread_name = None, *args,
     )
     thread.start()
     timeout_chunk = 1
-    timeout_remainders[t_name] = timeout
-    while thread.is_alive() and timeout_remainders[t_name] > 0:
+    _timeout_remainders[t_name] = timeout
+    while thread.is_alive() and _timeout_remainders[t_name] > 0:
         thread.join(timeout_chunk)
-        timeout_remainders[t_name] -= timeout_chunk
+        _timeout_remainders[t_name] -= timeout_chunk
 
     if thread.is_alive():
         raise Exception(message)
