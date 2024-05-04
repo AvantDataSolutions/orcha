@@ -392,5 +392,11 @@ class GraphApiListSource(SourceBase):
         - columns: list[str] | None = None
             - The columns to retrieve from the list, uses the columns of the source if not provided.
         """
-        item_list = ItemList.get(self.site_id, self.list_id, self.columns, self.data_entity.get_token())
+        cur_cols = columns if columns else self.columns
+        item_list = ItemList.get(
+            site_id=self.site_id,
+            list_id=self.list_id,
+            columns=cur_cols,
+            token=self.data_entity.get_token()
+        )
         return item_list.to_df()
