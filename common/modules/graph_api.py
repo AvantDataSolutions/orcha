@@ -1,7 +1,6 @@
 
 import base64
 import io
-import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -238,7 +237,6 @@ def get_msal_token_app_only_login(
     result = app.acquire_token_silent(scope, account=None)
 
     if not result:
-        logging.info("No suitable token exists in cache. Let's get a new one from AAD.")
         result = app.acquire_token_for_client(scopes=scope)
 
     if not result:
