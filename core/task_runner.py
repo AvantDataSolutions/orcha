@@ -157,7 +157,12 @@ class ThreadHandler():
             # only if it's still running do we want to set it as success,
             # otherwise it's already been set as failed, warn, etc and
             # we need to leave it in that state
-            if run.status == tasks.RunStatus.RUNNING:
+            thread_exception = orcha_threading.run_function_get_exception(
+                threading.current_thread(),
+                clear_exception=False
+            )
+            # If we had an exception then we don't want to set it as a success here
+            if run.status == tasks.RunStatus.RUNNING and not thread_exception:
                 run.set_success()
 
         # Because we have multiple schedules for a task we need

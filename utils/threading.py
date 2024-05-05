@@ -17,16 +17,26 @@ def run_function_store_exception(exec: Exception):
     _function_exceptions[threading.current_thread().name] = exec
 
 
-def run_function_get_exception(thread: threading.Thread | None):
+def run_function_clear_exception(thread_name: str | None):
+    t_name = thread_name or threading.current_thread().name
+    _function_exceptions.pop(t_name, None)
+
+
+def run_function_get_exception(
+        thread: threading.Thread | None,
+        clear_exception: bool = True
+    ):
     """
     Gets the exception from a function that was run with a timeout and
     clears the exception from the global store.
     """
     # Must pop the exception from the global store otherwise
     # every time this thread runs again it'll return this exception.
-    if thread is None:
-        return _function_exceptions.pop(threading.current_thread().name, None)
-    return _function_exceptions.pop(thread.name, None)
+    t_name = thread.name if thread else threading.current_thread().name
+    exec = _function_exceptions.get(t_name)
+    if clear_exception:
+        run_function_clear_exception(t_name)
+    return exec
 
 
 def run_function_with_timeout(timeout, message, func, thread_name = None, *args, **kwargs):
@@ -49,6 +59,8 @@ def run_function_with_timeout(timeout, message, func, thread_name = None, *args,
         args=args,
         kwargs=kwargs
     )
+    # clear any previous exceptions
+    run_function_clear_exception(t_name)
     thread.start()
     timeout_chunk = 1
     _timeout_remainders[t_name] = timeout
