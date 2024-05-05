@@ -199,6 +199,12 @@ class ThreadHandler():
                 run.set_failed(output={
                     'exception':f'{str(e)}, \n' + f'{traceback.format_exc()}'
                 })
+                # Make sure we check all required monitors after
+                # the run has been marked as failed otherwise they
+                # won't see the failed runs yet
+                for m in task.task_monitors:
+                    if isinstance(m, tasks.FailedRunsMonitor):
+                        m.check()
                 # if we have an exception the active time thread then just remove
                 # the run from the running dict and let the active timer thread
                 # catch the KeyError and stop itself

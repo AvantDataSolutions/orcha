@@ -14,6 +14,8 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
 
+from orcha.core.monitors import AlertBase, MonitorBase
+
 from orcha.utils.sqlalchemy import (
     get,
     get_latest_versions,
@@ -172,6 +174,7 @@ class TaskItem():
     last_active: dt
     status: TaskStatus
     notes: str | None = None
+    task_monitors: list[TaskMonitorBase] = []
 
     def __init__(
             self, task_idk: str, version: dt, task_metadata: dict, name: str,
@@ -244,17 +247,32 @@ class TaskItem():
             thread_group: str = 'base_thread',
             task_metadata: dict = {},
             task_tags: list[str] = [],
-            register_with_runner: bool = True
+            register_with_runner: bool = True,
+            task_monitors: list[TaskMonitorBase] = []
         ):
         """
-        task_id: The unique id used to identify this task. This is used
+        Creates a new task with the given parameters. This will create a new
+        task in the database and register it with the task runner if required.
+        #### Parameters:
+        - task_id: The unique id used to identify this task. This is used
             to identify the task in the database and in the task runner and
             for updates, enabling/disabling and deleting
-        thread_group: The thread group to use for the task. All tasks in the
+        - name: The name of the task
+        - description: A description of the task
+        - schedule_sets: A list of ScheduleSet objects that define the
+            schedules for the task for when it should run.
+        - thread_group: The thread group to use for the task. All tasks in the
             same thread group will be run in the same thread.
-        status: The status of the task. This can be used to disable a task when
+        - status: The status of the task. This can be used to disable a task when
             no longer required. Tasks must be explicitly disabled to prevent
             the scheduler from queuing runs for them.
+        - task_metadata: Additional metadata for the task, no specific requirements
+            are placed on this data, however is used by Orcha UI for workspaces.
+        - task_tags: A list of tags for the task. These can be used to group tasks
+            together for filtering and searching (used by Orcha UI)
+        - register_with_runner: If True, the task will be registered with the runner
+        - task_monitors: A list of TaskMonitorBase objects that define how to monitor
+            the task and raise alerts if required.
         """
 
         confirm_initialised()
@@ -309,6 +327,9 @@ class TaskItem():
         )
 
         task.task_function = task_function # type: ignore
+        for monitor in task_monitors:
+            monitor.task = task
+        task.task_monitors = task_monitors
 
         if register_with_runner:
             if _register_task_with_runner is None:
@@ -400,6 +421,11 @@ class TaskItem():
 
     def get_last_run(self, schedule: ScheduleSet | None) -> RunItem | None:
         return RunItem.get_latest(task=self, schedule=schedule)
+
+    def get_latest_runs(self, schedule: ScheduleSet | None, count: int) -> list[RunItem]:
+        runs = RunItem.get_all(task=self, since=dt.min, schedule=schedule)
+        runs = sorted(runs, key=lambda x: x.scheduled_time, reverse=True)
+        return runs[:count]
 
     def get_next_scheduled_time(self, schedule: ScheduleSet | None = None) -> dt:
         """
@@ -966,3 +992,68 @@ class RunItem():
             end_time = db_item.end_time,
             output = new_output
         )
+
+
+"""
+===================================================================
+Task Monitor classes and definitions
+===================================================================
+"""
+
+class TaskMonitorBase(MonitorBase):
+    """
+    The base class to monitor a task.
+    """
+    def __init__(self):
+        self.task: TaskItem | None = None
+
+    def check(self, *args, **kwargs):
+        """
+        This method is used to monitor the task.
+        """
+        pass
+
+
+class FailedRunsMonitor(TaskMonitorBase):
+    """
+    This class is used to monitor the status of a run and raise an
+    alert if the run fails a certain number of times consecutively.
+    Note: This monitor will not send alerts if the task has failed
+    'too many times' to avoid spamming alerts. The recipient of the
+    alert is expected to check the task.
+    """
+    alert_on = RunStatus.FAILED
+    failure_count = 1
+
+    def __init__(self, alert: AlertBase | Callable, failure_count: int = 1):
+        self.alert = alert
+        self.alert_on = RunStatus.FAILED
+        self.failure_count = failure_count
+
+    def check(self, *args, **kwargs):
+        """
+        This method is used to monitor a run.
+        """
+        if not self.task:
+            raise Exception('Task not set for monitor.')
+        runs = self.task.get_latest_runs(None, 5)
+        fail_count = 0
+        for run in runs:
+            if run.status == self.alert_on:
+                fail_count += 1
+        if fail_count == 5:
+            # If we have 'too many failures' then stop sending
+            # alerts until we've had some successful runs again
+            # to avoid spamming too many alerts and getting negative
+            # email/domain reputation
+            return
+        if fail_count >= self.failure_count:
+            times_str = 'time' if fail_count == 1 else 'times consecutively'
+            message = f'''
+                Task {self.task.name} has failed {fail_count} {times_str}.
+                Failed with output: {run.output}
+            '''
+            if isinstance(self.alert, AlertBase):
+                self.alert.send_alert(message=message)
+            else:
+                self.alert(message)
