@@ -102,6 +102,10 @@ def _setup_sqlalchemy(
             --DROP INDEX IF EXISTS orcha.idx_orcha_runs_task_set_scheduled;
             CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_set_scheduled
             ON orcha.runs (task_idf, scheduled_time, set_idf, run_type);
+
+            --DROP INDEX IF EXISTS orcha.idx_orcha_runs_taskidf_status;
+            CREATE INDEX IF NOT EXISTS idx_orcha_runs_taskidf_status
+            ON orcha.runs (task_idf, status);
         '''))
 
 """
