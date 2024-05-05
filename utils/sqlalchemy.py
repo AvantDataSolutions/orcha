@@ -36,14 +36,20 @@ to keep performance and memory more consistent across
 all database types
 """
 
-def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
+def postgres_partial_scaffold(
+        user: str,
+        passwd: str,
+        server: str,
+        db: str,
+        application_name: str
+    ):
     """
     Creates a connection to a database without a schema or
     declarative base object. Returns the engine and sessionmaker.
     Postgres specific connection parameters are set here.
     """
     engine = create_engine(
-        f'postgresql://{user}:{passwd}@{server}/{db}',
+        f'postgresql://{user}:{passwd}@{server}/{db}?application_name={application_name}',
         pool_size=50,
         max_overflow=2,
         pool_recycle=300,
@@ -53,14 +59,23 @@ def postgres_partial_scaffold(user: str, passwd: str, server: str, db: str):
     return engine, session
 
 
-def postgres_scaffold(user: str, passwd: str, server: str, db: str, schema: str):
+def postgres_scaffold(
+        user: str,
+        passwd: str,
+        server: str,
+        db: str,
+        schema: str,
+        application_name: str
+    ):
     """
     Creates a connection to a specific database and schema,
     and returns the SQLAlchemy Base object, engine and sessionmaker.
     Postgres specific connection parameters are set here.
     """
     if schema not in _SCAFFOLD_CACHE:
-        engine, session = postgres_partial_scaffold(user, passwd, server, db)
+        engine, session = postgres_partial_scaffold(
+            user, passwd, server, db, application_name
+        )
         Base = declarative_base(metadata=MetaData(schema=schema))
 
         _SCAFFOLD_CACHE[schema] = (Base, engine, session)

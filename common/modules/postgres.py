@@ -32,7 +32,8 @@ class PostgresEntity(DatabaseEntity):
             user=user_name,
             passwd=password,
             server=host,
-            db=database_name
+            db=database_name,
+            application_name=f'entity_{module_idk}_{host}_{database_name}'
         )
 
 

@@ -14,7 +14,8 @@ class LogManager:
     @staticmethod
     def _setup_sqlalchemy(
             user: str, passwd: str,
-            server: str, db: str
+            server: str, db: str,
+            application_name: str
         ):
         """
         Setup the SQLAlchemy ORM for the log manager. This function should be
@@ -35,7 +36,8 @@ class LogManager:
             passwd=passwd,
             server=server,
             db=db,
-            schema=CUR_SCHEMA
+            schema=CUR_SCHEMA,
+            application_name=application_name
         )
 
         class LogEntryRecord(Base):

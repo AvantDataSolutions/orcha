@@ -26,7 +26,7 @@ s_maker: sessionmaker[Session]
 def _setup_sqlalchemy(
         orcha_user: str, orcha_pass: str,
         orcha_server: str, orcha_db: str,
-        orcha_schema: str
+        orcha_schema: str, application_name: str
     ):
     global is_initialised, Base, engine, s_maker, SchedulerRecord
     is_initialised = True
@@ -35,7 +35,8 @@ def _setup_sqlalchemy(
         passwd=orcha_pass,
         server=orcha_server,
         db=orcha_db,
-        schema=orcha_schema
+        schema=orcha_schema,
+        application_name=application_name
     )
 
     class SchedulerRecord(Base):

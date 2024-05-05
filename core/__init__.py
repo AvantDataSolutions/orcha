@@ -5,7 +5,8 @@ _ORCHA_SCHEMA = 'orcha'
 
 def initialise(
         orcha_user: str, orcha_pass: str,
-        orcha_server: str, orcha_db: str
+        orcha_server: str, orcha_db: str,
+        application_name: str
     ):
     """
     This function must be called before any other functions in the orcha package.
@@ -20,7 +21,8 @@ def initialise(
         orcha_pass=orcha_pass,
         orcha_server=orcha_server,
         orcha_db=orcha_db,
-        orcha_schema=_ORCHA_SCHEMA
+        orcha_schema=_ORCHA_SCHEMA,
+        application_name=f'{application_name}_tasks'
     )
 
     scheduler._setup_sqlalchemy(
@@ -28,14 +30,16 @@ def initialise(
         orcha_pass=orcha_pass,
         orcha_server=orcha_server,
         orcha_db=orcha_db,
-        orcha_schema=_ORCHA_SCHEMA
+        orcha_schema=_ORCHA_SCHEMA,
+        application_name=f'{application_name}_scheduler'
     )
 
     LogManager._setup_sqlalchemy(
         user=orcha_user,
         passwd=orcha_pass,
         server=orcha_server,
-        db=orcha_db
+        db=orcha_db,
+        application_name=f'{application_name}_logs'
     )
 
     lm = LogManager('orcha')
