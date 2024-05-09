@@ -117,7 +117,7 @@ class SharedDriveItem:
         return shared_drive_item
 
 
-    def to_df(self) -> pd.DataFrame:
+    def to_df(self, sheet_name: str | int) -> pd.DataFrame:
         """
         A niche function to convert the SharedDriveItem to a DataFrame for files
         that happen to be dataframe-like; typically CSV or XLSX files.
@@ -125,7 +125,10 @@ class SharedDriveItem:
         if self._file_bytes is None:
             raise ValueError('File data is not loaded.')
         if self.name.endswith('.xlsx'):
-            return pd.read_excel(io.BytesIO(self._file_bytes))
+            return pd.read_excel(
+                io.BytesIO(self._file_bytes),
+                sheet_name=sheet_name
+            )
         elif self.name.endswith('.csv'):
             return pd.read_csv(io.BytesIO(self._file_bytes))
         else:
@@ -276,7 +279,11 @@ class GraphApiSharedXlsxOrCsvSource(SourceBase):
     shared_url: str | None = None
 
     @module_function
-    def get(self, share_url: str | None = None) -> pd.DataFrame:
+    def get(
+            self,
+            share_url: str | None = None,
+            sheet_name: str | int = 0
+        ) -> pd.DataFrame:
         """
         Returns a DataFrame from a shared URL of a CSV or XLSX file.
         #### Parameters
@@ -290,7 +297,7 @@ class GraphApiSharedXlsxOrCsvSource(SourceBase):
         else:
             raise ValueError('No shared URL provided.')
         sdi = SharedDriveItem.get(cur_url, self.data_entity.get_token())
-        return sdi.to_df()
+        return sdi.to_df(sheet_name=sheet_name)
 
 
 @dataclass
