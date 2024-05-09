@@ -92,3 +92,31 @@ def get_msal_token_resource_owner_login(
         return result['access_token']
     else:
         raise Exception('Failed to acquire token.')
+
+
+# create a function to do interactive login
+def get_msal_token_interactive_login(
+        client_id: str,
+        authority: str,
+        scope=['https://graph.microsoft.com/.default']
+    ):
+    """
+    This uses the interactive flow which requires a browser to login.
+    This is recommended for user-to-server communication and is the most
+    secure method as it requires MFA.
+    Note: This doesn't work on headless sessions.
+    """
+    app = msal.PublicClientApplication(
+        client_id,
+        authority=authority
+    )
+
+    result = app.acquire_token_interactive(scopes=scope)
+
+    if not result:
+        raise Exception('Failed to acquire token.')
+
+    if result.get('access_token'):
+        return result['access_token']
+    else:
+        raise Exception('Failed to acquire token.')
