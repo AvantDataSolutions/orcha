@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from orcha.core import tasks, scheduler, monitors
 from orcha.utils.log import LogManager
 
