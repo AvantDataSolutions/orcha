@@ -94,17 +94,6 @@ class Scheduler:
     The scheduler can be run in a separate or the same environment as the
     task runner.
     """
-    all_tasks: list[TaskItem] = []
-    last_refresh: dt = dt.now()
-    task_refresh_interval: float
-    fail_unstarted_runs: bool
-    disable_stale_tasks: bool
-    prune_runs_max_age: td | None
-    prune_logs_max_age: td | None
-    prune_interval: float
-    fail_historical_runs: bool
-    fail_historical_age: td | None
-    fail_historical_interval: float
 
     def __init__(
             self,
