@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 
+from orcha.core.monitors import AlertBase, MonitorBase
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
@@ -61,6 +62,28 @@ class RunningState(Enum):
     paused = 'paused'
 
 
+class SchedulerMonitor(MonitorBase):
+    """
+    This class is used to monitor the scheduler and alert on any
+    'failed' type events such as disabled tasks, inactive tasks, etc.
+    """
+
+    def __init__(self, alert: AlertBase, max_alerts: int = 5):
+        """
+        Initialise the scheduler monitor with the given alert class.
+        ### Args
+        - alert(AlertBase): The alert class to use for sending alerts.
+        - max_alerts(int = 5): The maximum number of alerts to send.
+        """
+        self.alert = alert
+        self.max_alerts = max_alerts
+
+    def check(self, *args, **kwargs):
+        """
+        Check the scheduler for any issues and send alerts if required.
+        """
+        pass
+
 @dataclass
 class OrchaSchedulerConfig:
         """
@@ -98,6 +121,7 @@ class Scheduler:
     def __init__(
             self,
             config: OrchaSchedulerConfig = OrchaSchedulerConfig(),
+            monitors: list[SchedulerMonitor] = [],
             fail_unstarted_runs: bool | None = None,
             disable_stale_tasks: bool | None = None,
         ):
@@ -111,6 +135,8 @@ class Scheduler:
         - disable_stale_tasks: If True, then if a task hasn't been active
         since the last run, then the task will be set to inactive.
         """
+        self.all_tasks = []
+
         self.running_state: RunningState = RunningState.running
         self.thread = None
         self.prune_thread = None
@@ -126,6 +152,8 @@ class Scheduler:
         self.fail_historical_runs = config.fail_historical_runs
         self.fail_historical_age = config.fail_historical_age
         self.fail_historical_interval = config.fail_historical_interval
+
+        self.monitors = monitors
 
         # Overwrite the config with the deprecated parameters
         if fail_unstarted_runs is not None:
@@ -179,6 +207,13 @@ class Scheduler:
                     # TODO fix this type hinting
                     data: dt = record.last_active # type: ignore
                     return data
+
+    def raise_alert(self, message: str):
+        """
+        Raise an alert using the monitors and the given message.
+        """
+        for monitor in self.monitors:
+            monitor.alert.send_alert(message)
 
     def update_active(self):
         """
@@ -281,6 +316,7 @@ class Scheduler:
                             },
                             zero_duration=True
                         )
+                        self.raise_alert(f'Historical run failed to start/finish: {run.run_idk}')
                         historical_count += 1
                     if run.status == RunStatus.RUNNING:
                         if run.last_active is not None:
@@ -291,6 +327,7 @@ class Scheduler:
                                     },
                                     zero_duration=True
                                 )
+                                self.raise_alert(f'Failed inactive run: {run.run_idk}')
                                 historical_count += 1
                 orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
                     'task_id': task.task_idk,
@@ -340,6 +377,7 @@ class Scheduler:
                                             'message': 'Run has been inactive for over 5 minutes'
                                         }
                                     )
+                                    self.raise_alert(f'Failed inactive run: {last_run.run_idk}')
                         if self.disable_stale_tasks and last_run is not None:
                             # If the task hasn't been active since the last run,
                             # then it's stale and should be disabled.
@@ -347,6 +385,7 @@ class Scheduler:
                             # so a task should have been active many times since the last run
                             if task.last_active < min(last_run.scheduled_time, dt.now() - td(minutes=5)):
                                 task.set_status('inactive', 'Task has been inactive since last scheduled run')
+                                self.raise_alert(f'Disabled stale task: {task.task_idk}')
                                 continue
                         # print('Run due for task:', task.task_idk)
                         run = task.schedule_run(schedule)
