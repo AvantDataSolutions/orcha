@@ -26,6 +26,11 @@ from orcha.utils.sqlalchemy import (
 print('Loading:',__name__)
 
 is_initialised = False
+skip_initialisation_check = False
+"""
+Debug flag to skip the initialisation check for adding tasks
+without a task runner in place.
+"""
 
 Base: DeclarativeMeta
 engine: Engine
@@ -43,6 +48,8 @@ def confirm_initialised():
     """
     Guard function to ensure that orcha has been initialised
     """
+    if skip_initialisation_check:
+        return
     if not is_initialised:
         raise RuntimeError('orcha not initialised. Call orcha.core.initialise() first')
 
@@ -331,7 +338,7 @@ class TaskItem():
             monitor.task = task
         task.task_monitors = task_monitors
 
-        if register_with_runner:
+        if register_with_runner and not skip_initialisation_check:
             if _register_task_with_runner is None:
                 raise Exception('No task runner registered')
             _register_task_with_runner(task)
