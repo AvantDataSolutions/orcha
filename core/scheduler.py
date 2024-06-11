@@ -66,12 +66,15 @@ class SchedulerMonitor(MonitorBase):
     """
     This class is used to monitor the scheduler and alert on any
     'failed' type events such as disabled tasks, inactive tasks, etc.
+    Also uses an external thread to check the status of the scheduler:
+    - If the scheduler has been inactive for over 5 minutes.
     """
 
     def __init__(self, alert: AlertBase, max_alerts: int = 5):
         """
         Initialise the scheduler monitor with the given alert class.
         ### Args
+        - scheduler(Scheduler): The scheduler to monitor.
         - alert(AlertBase): The alert class to use for sending alerts.
         - max_alerts(int = 5): The maximum number of alerts to send.
         """
@@ -83,6 +86,29 @@ class SchedulerMonitor(MonitorBase):
         Check the scheduler for any issues and send alerts if required.
         """
         pass
+
+    def set_checks(self, scheduler: Scheduler):
+        self.scheduler = scheduler
+        self.check_last_active_thread = threading.Thread(target=self._thread_helper_check_last_active)
+        self.check_last_active_thread.start()
+
+    def _thread_helper_check_last_active(self):
+        """
+        This is the thread function that will check the last active time
+        of the scheduler and send an alert if it's been inactive for over
+        5 minutes.
+        """
+        while True:
+            time.sleep(120)
+            last_active = self.scheduler.get_last_active()
+            if last_active is not None:
+                # if it's over 10 minutes since the last active time
+                # then assume roughly 5 alerts have been sent and stop
+                if last_active < dt.now() - td(minutes=10):
+                    continue
+                elif last_active < dt.now() - td(minutes=5):
+                    self.alert.send_alert('Scheduler has been inactive for over 5 minutes')
+
 
 @dataclass
 class OrchaSchedulerConfig:
@@ -154,6 +180,8 @@ class Scheduler:
         self.fail_historical_interval = config.fail_historical_interval
 
         self.monitors = monitors
+        for monitor in self.monitors:
+            monitor.set_checks(self)
 
         # Overwrite the config with the deprecated parameters
         if fail_unstarted_runs is not None:
@@ -351,6 +379,11 @@ class Scheduler:
     def _process_schedules(self):
         while self.running_state != RunningState.stopped:
             time.sleep(15)
+            # log that we're processing schedules and log which tasks
+            orcha_log.add_entry('scheduler', 'status', 'Processing schedules', {
+                'task_count': len(self.all_tasks),
+                'task_names': ', '.join([task.task_idk for task in self.all_tasks])
+            })
             self.update_active()
             # Loop while we're not stopped, but only do stuff if we're running
             if self.running_state != RunningState.running:
