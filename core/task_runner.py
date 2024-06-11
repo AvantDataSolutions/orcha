@@ -7,12 +7,15 @@ from orcha.core import tasks
 from orcha.core.tasks import TaskItem, RunItem
 from orcha.utils import kvdb
 from orcha.utils import threading as orcha_threading
+from orcha.utils.log import LogManager
 
 # TODO terminate nicely
 # https://itnext.io/containers-terminating-with-grace-d19e0ce34290
 # https://docs.docker.com/engine/reference/commandline/stop/
 
 BASE_THREAD_GROUP = 'base_thread'
+
+tasks_log = LogManager('tasks')
 
 
 class ThreadHandler():
@@ -74,6 +77,11 @@ class ThreadHandler():
             self.process_task(task)
 
     def process_task(self, task: TaskItem):
+        # log that the task is running
+        tasks_log.add_entry(
+            'task_runner', 'running', 'processing_task',
+            json={'task': task.name}
+        )
         # Run in a second thread to tick over the active time
         # this is mostly here if something crashes and the
         # task never finishes, so we can check for stale active
@@ -170,6 +178,10 @@ class ThreadHandler():
         # some schedules will have runs queued at the same time
         queued_runs = task.get_queued_runs()
         for run in queued_runs:
+            tasks_log.add_entry(
+                'task_runner', 'running', 'running_task',
+                json={'task': task.name, 'run_id': run.run_idk}
+            )
             try:
                 running_dict[run.run_idk] = True
                 # We need to allow the _refresh_active function to use the
@@ -226,6 +238,10 @@ class TaskRunner():
             use_thread_groups = True,
             default_runner = True
         ):
+        tasks_log.add_entry(
+            'task_runner', 'setup', 'initialising_task_runner',
+            json={'run_in_thread': run_in_thread, 'use_thread_groups': use_thread_groups}
+        )
         self.run_in_threads = run_in_thread
         self.use_thread_groups = use_thread_groups
         # If we have a dummy runner, then only register it as the default
@@ -249,6 +265,11 @@ class TaskRunner():
             self.handlers[thread_group] = ThreadHandler(task.thread_group)
             if self.run_in_threads:
                 self.handlers[thread_group].start()
+
+        tasks_log.add_entry(
+            'task_runner', 'setup', 'registering_task',
+            json={'task': task.name, 'thread_group': thread_group}
+        )
 
         # Add task to the handler and will replace the task if it's already there
         self.handlers[thread_group].add_task(task)
