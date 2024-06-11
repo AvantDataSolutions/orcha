@@ -1043,19 +1043,22 @@ class FailedRunsMonitor(TaskMonitorBase):
         """
         if not self.task:
             raise Exception('Task not set for monitor.')
-        runs = self.task.get_latest_runs(None, 5)
+        # Check for 5 out of 10 runs to have failed,
+        # this is to avoid spamming alerts if 4 fail, 1 succeeds
+        # then 4 more fail, etc.
+        runs = self.task.get_latest_runs(None, 10)
         fail_count = 0
         for run in runs:
             if run.status == self.alert_on:
                 fail_count += 1
-        if fail_count == 5:
+        if fail_count >= 5:
             # If we have 'too many failures' then stop sending
             # alerts until we've had some successful runs again
             # to avoid spamming too many alerts and getting negative
             # email/domain reputation
             return
         if fail_count >= self.failure_count:
-            times_str = 'time' if fail_count == 1 else 'times consecutively'
+            times_str = 'time' if fail_count == 1 else 'times'
             message = f'''
                 Task {self.task.name} has failed {fail_count} {times_str}.
                 Failed with output: {run.output}
