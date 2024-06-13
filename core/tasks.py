@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta as td
@@ -851,7 +852,7 @@ class RunItem():
         # so we need to copy it here to avoid modifying the default
         # and contaminating output across all runs
         # Copy the output so we don't modify the input
-        new_output = output.copy() if output else {}
+        new_output = copy.deepcopy(output) if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.RUNNING:
                 # if it's already set, we don't
@@ -878,7 +879,7 @@ class RunItem():
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
         # See set_running for why we copy the output
-        new_output = output.copy() if output else {}
+        new_output = copy.deepcopy(output) if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
@@ -909,7 +910,7 @@ class RunItem():
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
         # See set_running for why we copy the output
-        new_output = output.copy() if output else {}
+        new_output = copy.deepcopy(output) if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
@@ -937,7 +938,7 @@ class RunItem():
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
         # See set_running for why we copy the output
-        new_output = output.copy() if output else {}
+        new_output = copy.deepcopy(output) if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.CANCELLED:
                 # If a run has been cancelled then leave it as cancelled
@@ -967,7 +968,7 @@ class RunItem():
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
         # See set_running for why we copy the output
-        new_output = output.copy() if output else {}
+        new_output = copy.deepcopy(output) if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.CANCELLED:
                 # if it's already set, we don't
