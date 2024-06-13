@@ -841,12 +841,17 @@ class RunItem():
         if needs_update:
             self._update_db()
 
-    def set_running(self, output: dict = {}):
+    def set_running(self, output: dict | None = None):
         """
         Sets the run as running and sets the start time.
         Merges the output with any existing output.
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
+        # NOTE: The default output is shared across all calls
+        # so we need to copy it here to avoid modifying the default
+        # and contaminating output across all runs
+        # Copy the output so we don't modify the input
+        new_output = output.copy() if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.RUNNING:
                 # if it's already set, we don't
@@ -855,16 +860,16 @@ class RunItem():
             if db_item.status != RunStatus.QUEUED:
                 raise Exception('Run status is not queued, cannot set to running')
             if db_item.output is not None:
-                output.update(db_item.output)
+                new_output.update(db_item.output)
 
         self.update(
             status = RunStatus.RUNNING,
             start_time = dt.now(),
             end_time = None,
-            output = output
+            output = new_output
         )
 
-    def set_success(self, output: dict = {}):
+    def set_success(self, output: dict | None = None):
         """
         Sets the run as success and sets the end time.
         Merges the output with any existing output.
@@ -872,6 +877,8 @@ class RunItem():
         effectively only go from QUEUED or RUNNING to SUCCESS.
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
+        # See set_running for why we copy the output
+        new_output = output.copy() if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
@@ -885,22 +892,24 @@ class RunItem():
                 return
 
             if db_item.output is not None:
-                output.update(db_item.output)
+                new_output.update(db_item.output)
 
         self.update(
             status = RunStatus.SUCCESS,
             start_time = self.start_time,
             end_time = dt.now(),
-            output = output
+            output = new_output
         )
 
-    def set_warn(self, output: dict = {}):
+    def set_warn(self, output: dict | None = None):
         """
         Sets the run as a warning and sets the end time.
         Merges the output with any existing output.
         This will not overwrite an existing FAILED state.
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
+        # See set_running for why we copy the output
+        new_output = output.copy() if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.FAILED:
                 # If a run has failed (e.g. timeout) then leave it has failed
@@ -910,16 +919,16 @@ class RunItem():
                 # want to update it again
                 return
             if db_item.output is not None:
-                output.update(db_item.output)
+                new_output.update(db_item.output)
 
         self.update(
             status = RunStatus.WARN,
             start_time = self.start_time,
             end_time = dt.now(),
-            output = output
+            output = new_output
         )
 
-    def set_failed(self, output: dict = {}, zero_duration = False):
+    def set_failed(self, output: dict | None = None, zero_duration = False):
         """
         Sets the run as failed and sets the end time.
         Merges the output with any existing output.
@@ -927,6 +936,8 @@ class RunItem():
         failing historical runs as we don't know when they actually stopped.
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
+        # See set_running for why we copy the output
+        new_output = output.copy() if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.CANCELLED:
                 # If a run has been cancelled then leave it as cancelled
@@ -936,7 +947,7 @@ class RunItem():
                 # want to update it again
                 return
             if db_item.output is not None:
-                output.update(db_item.output)
+                new_output.update(db_item.output)
 
         failed_time = dt.now()
         if zero_duration:
@@ -946,22 +957,24 @@ class RunItem():
             status = RunStatus.FAILED,
             start_time = self.start_time,
             end_time = failed_time,
-            output = output
+            output = new_output
         )
 
-    def set_cancelled(self, output: dict = {}, zero_duration = False):
+    def set_cancelled(self, output: dict | None = None, zero_duration = False):
         """
         Sets the run as cancelled and sets the end time.
         Merges the output with any existing output.
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
+        # See set_running for why we copy the output
+        new_output = output.copy() if output else {}
         if db_item is not None:
             if db_item.status == RunStatus.CANCELLED:
                 # if it's already set, we don't
                 # want to update it again
                 return
             if db_item.output is not None:
-                output.update(db_item.output)
+                new_output.update(db_item.output)
 
 
         cancelled_time = dt.now()
@@ -972,7 +985,7 @@ class RunItem():
             status = RunStatus.CANCELLED,
             start_time = self.start_time,
             end_time = cancelled_time,
-            output = output
+            output = new_output
         )
 
     def set_output(self, output: dict | None, merge = False):
