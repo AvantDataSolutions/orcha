@@ -6,12 +6,12 @@ from orcha.utils import graph_api
 def send_email(
         token: str,
         send_as: str,
-        to: str,
+        to: list[str],
         subject: str,
         header: str,
         body: str,
-        cc: str = '',
-        bcc: str = '',
+        cc: list[str] = [],
+        bcc: list[str] = [],
         importance: str = 'normal',
         attachments: list = [],
     ):
@@ -46,14 +46,21 @@ def send_email(
                 'contentType': 'HTML',
                 'content': email_html
             },
-            'toRecipients': [{'emailAddress': {'address': to}}],
-            'ccRecipients': [{'emailAddress': {'address': cc}}] if cc else [],
-            'bccRecipients': [{'emailAddress': {'address': bcc}}] if bcc else [],
+            'toRecipients': [{'emailAddress': {'address': e}} for e in to],
+            'ccRecipients': [{'emailAddress': {'address': e}} for e in cc] if cc else [],
+            'bccRecipients': [{'emailAddress': {'address': e}} for e in bcc] if bcc else [],
             'importance': importance,
             'attachments': attachments if attachments else []
         }
     }
-    return graph_api.do_post(endpoint, token, data)
+    # Sending an email is a secondary function so we don't want to raise
+    # an exception if it fails which kills the thread that called this.
+    try:
+        return graph_api.do_post(endpoint, token, data)
+    except Exception as e:
+        print('---------- ERROR SENDING EMAIL -----------')
+        print(e)
+        print('------------------------------------------')
 
 
 class EmailSendResult():

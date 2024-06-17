@@ -99,7 +99,7 @@ class MicrosoftEmailAlert(AlertBase):
         email.send_email(
             token=token,
             send_as=MONITOR_CONFIG.email_send_as,
-            to=self.to,
+            to=[self.to],
             subject=subject,
             header='Orcha Monitor Alert',
             body=message,
