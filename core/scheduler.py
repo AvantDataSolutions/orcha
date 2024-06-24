@@ -355,7 +355,7 @@ class Scheduler:
                                     },
                                     zero_duration=True
                                 )
-                                self.raise_alert(f'Failed inactive run: {run.run_idk}')
+                                self.raise_alert(f'(task: {task.task_idk}) Failed inactive run: {run.run_idk}')
                                 historical_count += 1
                 orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
                     'task_id': task.task_idk,
