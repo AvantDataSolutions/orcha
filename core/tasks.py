@@ -667,6 +667,8 @@ class RunItem():
         if run_type is not None:
             pairs.append(('run_type', '=', run_type))
         if schedule is not None:
+            if schedule.set_idk is None:
+                raise Exception('set_idk not set: cannot get runs for schedule set without id')
             pairs.append(('set_idf', '=', schedule.set_idk))
         data = get(
             s_maker = s_maker,
@@ -688,6 +690,8 @@ class RunItem():
             ('status', '=', RunStatus.QUEUED)
         ]
         if schedule is not None:
+            if schedule.set_idk is None:
+                raise Exception('set_idk not set: cannot get runs for schedule set without id')
             pairs.append(('set_idf', '=', schedule.set_idk))
         data = get(
             s_maker = s_maker,
@@ -709,6 +713,8 @@ class RunItem():
             ('status', '=', RunStatus.RUNNING)
         ]
         if schedule is not None:
+            if schedule.set_idk is None:
+                raise Exception('set_idk not set: cannot get runs for schedule set without id')
             pairs.append(('set_idf', '=', schedule.set_idk))
         data = get(
             s_maker = s_maker,
