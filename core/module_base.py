@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from functools import wraps
 import time
 from dataclasses import dataclass, field
 from datetime import datetime as dt
+from functools import wraps
 from typing import Callable, Generic, Literal, TypeVar
 
 import pandas as pd
