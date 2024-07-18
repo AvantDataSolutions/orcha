@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import copy
+import json
+from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta as td
-import json
 from typing import Callable, Literal
 from uuid import uuid4
 
@@ -18,10 +19,7 @@ from sqlalchemy.sql import text as sql
 
 from orcha.core import monitors
 from orcha.core.monitors import AlertBase, MonitorBase
-
-from orcha.utils.mqueue import Message, Producer, Channel
-from abc import ABC
-
+from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import (
     get,
     get_latest_versions,

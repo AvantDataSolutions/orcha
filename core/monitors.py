@@ -4,9 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
 
-from orcha.utils import email, graph_api
-
-from orcha.utils import mqueue
+from orcha.utils import email, graph_api, mqueue
 
 
 class Config:
