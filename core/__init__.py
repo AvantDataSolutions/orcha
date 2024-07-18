@@ -56,6 +56,7 @@ def initialise(
             Producer.default_broker_port = monitor_config.mqueue_config.broker_port
         if not Consumer.broker_host:
             raise Exception('mqueue must be configured if using monitors and alerts')
+
     tasks._setup_sqlalchemy(
         orcha_user=orcha_user,
         orcha_pass=orcha_pass,
