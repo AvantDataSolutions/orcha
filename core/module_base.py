@@ -7,7 +7,7 @@ from datetime import datetime as dt
 from typing import Callable, Generic, Literal, TypeVar
 
 import pandas as pd
-from sqlalchemy import Column, Index, MetaData, Table
+from sqlalchemy import Column, Index, MetaData, Table, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
@@ -45,60 +45,65 @@ def module_function(func):
         # Either use any retry config passed in or use the global one
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
         # get the number of retries for this module, quietly passed via kwargs
-        retry_count = kwargs.get('_orcha_retry_count', 0)
-        retry_exceptions = kwargs.get('_orcha_retry_exceptions', [])
         if not isinstance(module_config, ModuleConfig):
             Exception(f'Exception (ValueError) in {module_base.module_idk} ({module_base.module_idk}) module: module_config must be of type ModuleConfig')
-        try:
-            start_time = dt.now()
-            # Remove any _orcha specific kwargs as they can cause downstream
-            # functions that don't accept kwargs to fail
-            func_kwargs = kwargs.copy()
-            func_kwargs.pop('_orcha_retry_count', None)
-            func_kwargs.pop('_orcha_retry_exceptions', None)
-            return_value = func(module_base, *args, **func_kwargs)
-            end_time = dt.now()
-            # get any existing runs
-            # if we're running outside of the scheduler
-            # then we won't have a key in the kvdb and will return None
-            current_run_times = kvdb.get(
-                key='current_run_times', as_type=list,
-                storage_type='local'
-            )
-            if current_run_times is None:
-                current_run_times = []
-            # then add the new run time to it. We shouldn't have to
-            # deal with concurrent access here as each module is
-            # is run in the same thread
-            current_run_times.append({
-                'module_idk': module_base.module_idk,
-                'start_time_posix': start_time.timestamp(),
-                'end_time_posix': end_time.timestamp(),
-                'duration_seconds': (end_time - start_time).total_seconds(),
-                'retry_count': retry_count,
-                'retry_exceptions': retry_exceptions,
-            })
-            kvdb.store(
-                storage_type='local',
-                key='current_run_times',
-                value=current_run_times
-            )
-            return return_value
-        except Exception as e:
-            total_attempts = retry_count + 1
-            if total_attempts > module_config.max_retries:
-                raise Exception(
-                    f'Exception ({type(e).__name__}) in \
-                    {module_base.module_idk} module: {e} \
-                    (total attempts: {total_attempts})'
-                ) from e
-            else:
-                # We're trying again, so increase the retry count
-                kwargs['_orcha_retry_count'] = total_attempts
+
+        retry_count = 0
+        retry_exceptions = []
+        func_complete = False
+        func_return_value = None
+
+        # get the current run times to be updated later
+        current_run_times = kvdb.get(
+            key='current_run_times', as_type=list,
+            storage_type='local'
+        )
+        if current_run_times is None:
+            current_run_times = []
+
+        start_time = dt.now()
+        while retry_count <= module_config.max_retries and not func_complete:
+            try:
+                func_return_value = func(module_base, *args, **kwargs)
+                end_time = dt.now()
+                # if the run was successful then update the current run times
+                # and set the function complete flag to break the loop
+                duration = (end_time - start_time).total_seconds()
+                current_run_times.append({
+                    'module_idk': module_base.module_idk,
+                    'start_time_posix': start_time.timestamp(),
+                    'end_time_posix': end_time.timestamp(),
+                    'duration_seconds': round(duration, 3),
+                    'retry_count': retry_count,
+                    'retry_exceptions': retry_exceptions,
+                })
+                func_complete = True
+            except Exception as e:
+                # if the function failed then we should retry
+                # increment the retry count and record the exception
+                retry_count = retry_count + 1
                 retry_exceptions.append(str(e))
-                kwargs['_orcha_retry_exceptions'] = retry_exceptions
-                time.sleep(module_config.retry_interval)
-                return wrapper(module_base, *args, **kwargs)
+
+                # if we're on the last retry then we should raise the exception
+                if retry_count > module_config.max_retries:
+                    raise Exception(
+                        f'Exception ({type(e).__name__}) in \
+                        {module_base.module_idk} module: {e} \
+                        (total attempts: {retry_count + 1})'
+                    ) from e
+                else:
+                    # if we're not on the last retry then we should wait
+                    time.sleep(module_config.retry_interval)
+
+        # save the updated run times back to the kvdb
+        kvdb.store(
+            storage_type='local',
+            key='current_run_times',
+            value=current_run_times
+        )
+        # return the value from the function
+        return func_return_value
+
     return wrapper
 
 
@@ -287,12 +292,7 @@ class PythonSource(SourceBase):
         if self.data_entity is None:
             raise Exception('No data entity set for source')
         else:
-            # remove _orcha data from kwargs as it doesn't need it
-            # and it will cause an error if it's passed to the function
-            kwargs_copy = kwargs.copy()
-            kwargs_copy.pop('_orcha_retry_count', None)
-            kwargs_copy.pop('_orcha_retry_exceptions', None)
-            return self.function(self.data_entity, **kwargs_copy)
+            return self.function(self.data_entity, **kwargs)
 
 
 @dataclass
