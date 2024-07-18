@@ -4,6 +4,7 @@ import copy
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta as td
+import json
 from typing import Callable, Literal
 from uuid import uuid4
 
@@ -15,7 +16,11 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
 
+from orcha.core import monitors
 from orcha.core.monitors import AlertBase, MonitorBase
+
+from orcha.utils.mqueue import Message, Producer, Channel
+from abc import ABC
 
 from orcha.utils.sqlalchemy import (
     get,
@@ -25,6 +30,30 @@ from orcha.utils.sqlalchemy import (
 )
 
 print('Loading:',__name__)
+
+class MqueueChannels():
+
+    class _RunFailedMessage:
+        def __init__(self, task_id: str, run_id: str):
+            self.task_id = task_id
+            self.run_id = run_id
+
+        def to_json(self) -> str:
+            return json.dumps({
+                "task_id": self.task_id,
+                "run_id": self.run_id
+            })
+
+        @classmethod
+        def from_json(cls, json_str: str):
+            data = json.loads(json_str)
+            return cls(task_id=data["task_id"], run_id=data["run_id"])
+
+    run_failed = Channel(
+        name='run_failed',
+        message_type=_RunFailedMessage
+    )
+
 
 is_initialised = False
 skip_initialisation_check = False
@@ -335,9 +364,9 @@ class TaskItem():
         )
 
         task.task_function = task_function # type: ignore
+
         for monitor in task_monitors:
-            monitor.task = task
-        task.task_monitors = task_monitors
+            monitor.add_task(task)
 
         if register_with_runner and not skip_initialisation_check:
             if _register_task_with_runner is None:
@@ -431,6 +460,11 @@ class TaskItem():
         return RunItem.get_latest(task=self, schedule=schedule)
 
     def get_latest_runs(self, schedule: ScheduleSet | None, count: int) -> list[RunItem]:
+        """
+        Gets the latest count runs for the task. If no schedule is provided
+        then runs from all schedules are returned.
+        Ordered by scheduled time descending.
+        """
         runs = RunItem.get_all(task=self, since=dt.min, schedule=schedule)
         runs = sorted(runs, key=lambda x: x.scheduled_time, reverse=True)
         return runs[:count]
@@ -966,6 +1000,13 @@ class RunItem():
             end_time = failed_time,
             output = new_output
         )
+        Producer().send_message(
+            channel=MqueueChannels.run_failed,
+            message=MqueueChannels.run_failed.message_type(
+                task_id=self.task_idf,
+                run_id=self.run_idk
+            )
+        )
 
     def set_cancelled(self, output: dict | None = None, zero_duration = False):
         """
@@ -1027,18 +1068,27 @@ Task Monitor classes and definitions
 ===================================================================
 """
 
-class TaskMonitorBase(MonitorBase):
+class TaskMonitorBase(MonitorBase, ABC):
     """
-    The base class to monitor a task.
+    The base abstract class to monitor a task.
     """
-    def __init__(self):
-        self.task: TaskItem | None = None
 
-    def check(self, *args, **kwargs):
-        """
-        This method is used to monitor the task.
-        """
-        pass
+    def __init__(
+            self,
+            alert: AlertBase | Callable[[str], None],
+            monitor_name: str,
+            channel: Channel,
+            check_function: Callable[[Channel, Message], None],
+            tasks: set[TaskItem] = set()
+        ):
+        # Redefine the init method to include the tasks set
+        # so that we can add tasks to the monitor in one hit
+        # or the monitor can be added to the task on task creation
+        super().__init__(alert, monitor_name, channel, check_function)
+        self.tasks = tasks
+
+    def add_task(self, task: TaskItem):
+        self.tasks.add(task)
 
 
 class FailedRunsMonitor(TaskMonitorBase):
@@ -1052,24 +1102,61 @@ class FailedRunsMonitor(TaskMonitorBase):
     alert_on = RunStatus.FAILED
     failure_count = 1
 
-    def __init__(self, alert: AlertBase | Callable, failure_count: int = 1):
+    def __init__(
+            self,
+            monitor_Name: str,
+            alert: AlertBase,
+            failure_count: int = 1
+        ):
+        super().__init__(
+            monitor_name=monitor_Name,
+            alert=alert,
+            channel=MqueueChannels.run_failed,
+            check_function=self.check
+        )
         self.alert = alert
         self.alert_on = RunStatus.FAILED
         self.failure_count = failure_count
 
-    def check(self, *args, **kwargs):
+    def _run_to_ui_url(self, run: RunItem) -> str:
+        if monitors.MONITOR_CONFIG and monitors.MONITOR_CONFIG.orcha_ui_base_url:
+            href = f'{monitors.MONITOR_CONFIG.orcha_ui_base_url}/run_details?run_id={run.run_idk}'
+            run_href = f'<a href="{href}">{run.run_idk}</a>'
+            return run_href
+        return run.run_idk
+
+    def _task_to_ui_url(self, task: TaskItem) -> str:
+        if monitors.MONITOR_CONFIG and monitors.MONITOR_CONFIG.orcha_ui_base_url:
+            href = f'{monitors.MONITOR_CONFIG.orcha_ui_base_url}/task_details?task_id={task.task_idk}'
+            task_href = f'<a href="{href}">{task.name}</a>'
+            return task_href
+        return task.name
+
+    def check(self, channel: Channel, message: Message):
         """
         This method is used to monitor a run.
         """
-        if not self.task:
-            raise Exception('Task not set for monitor.')
-        # Check for 5 out of 10 runs to have failed,
+        if not isinstance(message, MqueueChannels.run_failed.message_type):
+            raise Exception('Task monitor received invalid message type: ' + str(type(message)))
+
+        # Don't do anything if the failed task isn't added to the monitor
+        if message.task_id not in [x.task_idk for x in self.tasks]:
+            return
+
+        run = RunItem.get(message.run_id)
+        task = TaskItem.get(message.task_id)
+
+        if not task:
+            raise Exception(f'Task ID ({message.task_id}) from message not found')
+        if not run:
+            raise Exception(f'Run ID ({message.run_id}) from message not found')
+        # Check for 5 out of 7 runs to have failed,
         # this is to avoid spamming alerts if 4 fail, 1 succeeds
         # then 4 more fail, etc.
-        runs = self.task.get_latest_runs(None, 10)
+        runs = task.get_latest_runs(None, 7)
         fail_count = 0
-        for run in runs:
-            if run.status == self.alert_on:
+        for r in runs:
+            if r.status == self.alert_on:
                 fail_count += 1
         if fail_count >= 5:
             # If we have 'too many failures' then stop sending
@@ -1079,11 +1166,15 @@ class FailedRunsMonitor(TaskMonitorBase):
             return
         if fail_count >= self.failure_count:
             times_str = 'time' if fail_count == 1 else 'times'
-            message = f'''
-                Task {self.task.name} has failed {fail_count} {times_str}.
-                Failed with output: {run.output}
+            output_str = json.dumps(run.output, indent=4)
+            output_str = output_str.replace('\\n', '<br>')
+            message_string = f'''
+                <b>Task {self._task_to_ui_url(task)} has failed {fail_count} {times_str}</b>
+                <br>
+                <br><b>Run ID</b>
+                <br>{self._run_to_ui_url(run)}
+                <br>
+                <br><b>Run Output:</b>
+                <pre>{output_str}</pre>
             '''
-            if isinstance(self.alert, AlertBase):
-                self.alert.send_alert(message=message)
-            else:
-                self.alert(message)
+            self.alert.send_alert(message=message_string)

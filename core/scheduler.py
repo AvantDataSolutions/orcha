@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from dataclasses import dataclass
@@ -12,9 +13,11 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 
+from orcha.core import monitors
 from orcha.core.monitors import AlertBase, MonitorBase
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
+from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
 orcha_log = LogManager('orcha')
@@ -62,6 +65,84 @@ class RunningState(Enum):
     paused = 'paused'
 
 
+class MqueueChannels():
+
+    class _HistoricalRunMessage:
+        def __init__(self, scheduler_id: str, task_id: str, run_id: str, note: str):
+            self.scheduler_id = scheduler_id
+            self.task_id = task_id
+            self.run_id = run_id
+            self.note = note
+
+        def to_json(self) -> str:
+            return json.dumps({
+                "scheduler_id": self.scheduler_id,
+                "task_id": self.task_id,
+                "run_id": self.run_id,
+                "note": self.note
+            })
+
+        @classmethod
+        def from_json(cls, json_str: str):
+            data = json.loads(json_str)
+            return cls(
+                scheduler_id=data["scheduler_id"],
+                task_id=data["task_id"],
+                run_id=data["run_id"],
+                note=data["note"]
+            )
+
+    historical_run = Channel(
+        name='scheduler_historical_run',
+        message_type=_HistoricalRunMessage
+    )
+
+    class _InactiveSchedulerMessage:
+        def __init__(self, scheduler_id: str):
+            self.scheduler_id = scheduler_id
+
+        def to_json(self) -> str:
+            return json.dumps({
+                "scheduler_id": self.scheduler_id
+            })
+
+        @classmethod
+        def from_json(cls, json_str: str):
+            data = json.loads(json_str)
+            return cls(
+                scheduler_id=data["scheduler_id"]
+            )
+
+    inactive_scheduler = Channel(
+        name='inactive_scheduler',
+        message_type=_InactiveSchedulerMessage
+    )
+
+    class _InactiveTaskMessage:
+        def __init__(self, scheduler_id: str, task_id: str):
+            self.scheduler_id = scheduler_id
+            self.task_id = task_id
+
+        def to_json(self) -> str:
+            return json.dumps({
+                "scheduler_id": self.scheduler_id,
+                "task_id": self.task_id
+            })
+
+        @classmethod
+        def from_json(cls, json_str: str):
+            data = json.loads(json_str)
+            return cls(
+                scheduler_id=data["scheduler_id"],
+                task_id=data["task_id"]
+            )
+
+    inactive_task = Channel(
+        name='inactive_task',
+        message_type=_InactiveTaskMessage
+    )
+
+
 class SchedulerMonitor(MonitorBase):
     """
     This class is used to monitor the scheduler and alert on any
@@ -70,7 +151,12 @@ class SchedulerMonitor(MonitorBase):
     - If the scheduler has been inactive for over 5 minutes.
     """
 
-    def __init__(self, alert: AlertBase, max_alerts: int = 5):
+    def __init__(
+            self,
+            alert: AlertBase,
+            schedulers: list[Scheduler] = [],
+            max_alerts: int = 5
+        ):
         """
         Initialise the scheduler monitor with the given alert class.
         ### Args
@@ -80,34 +166,83 @@ class SchedulerMonitor(MonitorBase):
         """
         self.alert = alert
         self.max_alerts = max_alerts
+        self.schedulers = schedulers
 
-    def check(self, *args, **kwargs):
+        super().__init__(
+            alert=alert,
+            monitor_name='scheduler_monitor',
+            message_channel=[
+                MqueueChannels.inactive_scheduler,
+                MqueueChannels.inactive_task,
+                MqueueChannels.historical_run
+            ],
+            check_function=self.check
+        )
+
+    def _run_to_ui_url(self, run_id: str) -> str:
+        if monitors.MONITOR_CONFIG and monitors.MONITOR_CONFIG.orcha_ui_base_url:
+            href = f'{monitors.MONITOR_CONFIG.orcha_ui_base_url}/run_details?run_id={run_id}'
+            run_href = f'<a href="{href}">{run_id}</a>'
+            return run_href
+        return run_id
+
+    def _task_to_ui_url(self, task_id: str) -> str:
+        if monitors.MONITOR_CONFIG and monitors.MONITOR_CONFIG.orcha_ui_base_url:
+            href = f'{monitors.MONITOR_CONFIG.orcha_ui_base_url}/task_details?task_id={task_id}'
+            task_href = f'<a href="{href}">{task_id}</a>'
+            return task_href
+        return task_id
+
+    def add_scheduler(self, scheduler: Scheduler):
+        """
+        Add a scheduler to the monitor.
+        """
+        self.schedulers.append(scheduler)
+
+    def check(self, channel: Channel, message: Message):
         """
         Check the scheduler for any issues and send alerts if required.
         """
-        pass
 
-    def set_checks(self, scheduler: Scheduler):
-        self.scheduler = scheduler
-        self.check_last_active_thread = threading.Thread(target=self._thread_helper_check_last_active)
-        self.check_last_active_thread.start()
+        message_scheduler_id = getattr(message, 'scheduler_id')
+        if not message_scheduler_id:
+            raise Exception('Message does not have a scheduler_id')
 
-    def _thread_helper_check_last_active(self):
-        """
-        This is the thread function that will check the last active time
-        of the scheduler and send an alert if it's been inactive for over
-        5 minutes.
-        """
-        while True:
-            time.sleep(120)
-            last_active = self.scheduler.get_last_active()
-            if last_active is not None:
-                # if it's over 10 minutes since the last active time
-                # then assume roughly 5 alerts have been sent and stop
-                if last_active < dt.now() - td(minutes=10):
-                    continue
-                elif last_active < dt.now() - td(minutes=5):
-                    self.alert.send_alert('Scheduler has been inactive for over 5 minutes')
+        if message_scheduler_id not in [s.scheduler_idk for s in self.schedulers]:
+            return
+
+        if isinstance(message, MqueueChannels._InactiveSchedulerMessage):
+            print('Inactive scheduler message')
+            self.alert.send_alert(f'''
+                <b>Inactive Scheduler Alert</b>
+                <br>
+                <br><b>Scheduler ID</b>
+                <br>{message.scheduler_id}
+                <br>
+                <br>Scheduler has been inactive for over 5 minutes. Please
+                check the scheduler to ensure it's running correctly.
+            ''')
+        elif isinstance(message, MqueueChannels._InactiveTaskMessage):
+            self.alert.send_alert(f'''
+                <b>Inactive Task Alert</b>
+                <br>
+                <br><b>Task ID</b>
+                <br>{self._task_to_ui_url(message.task_id)}
+                <br>
+                <br>Task task has been disabled due to inactivity. Please
+                check the task runner and re-enable the task if required.
+            ''')
+        elif isinstance(message, MqueueChannels._HistoricalRunMessage):
+            self.alert.send_alert(f'''
+                <b>Historical Run Alert</b>
+                <br>
+                <br><b>Task ID</b>
+                <br>{self._task_to_ui_url(message.task_id)}
+                <br><b>Run ID</b>
+                <br>{self._run_to_ui_url(message.run_id)}
+                <br><b>Note</b>
+                <br>{message.note}
+            ''')
 
 
 @dataclass
@@ -155,6 +290,7 @@ class Scheduler:
         Initialise the scheduler with the given settings.
         ### Args
         - config(OrchaSchedulerConfig | None = None): The configuration for the scheduler.
+        - monitors(list[SchedulerMonitor] = []): A list of monitors to add to the scheduler.
         - fail_unstarted_runs: If True, then if a run is due, but the last
         run didn't start, then the last run will be set to failed before a new
         run is created.
@@ -162,6 +298,12 @@ class Scheduler:
         since the last run, then the task will be set to inactive.
         """
         self.all_tasks = []
+
+        self.scheduler_idk = 'main'
+
+        # Bind the scheduler to the monitors
+        for monitor in monitors:
+            monitor.add_scheduler(self)
 
         self.running_state: RunningState = RunningState.running
         self.thread = None
@@ -179,10 +321,6 @@ class Scheduler:
         self.fail_historical_age = config.fail_historical_age
         self.fail_historical_interval = config.fail_historical_interval
 
-        self.monitors = monitors
-        for monitor in self.monitors:
-            monitor.set_checks(self)
-
         # Overwrite the config with the deprecated parameters
         if fail_unstarted_runs is not None:
             self.fail_unstarted_runs = fail_unstarted_runs
@@ -190,6 +328,11 @@ class Scheduler:
         if disable_stale_tasks is not None:
             self.disable_stale_tasks = disable_stale_tasks
             raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
+
+        # Start the last active check thread
+        threading.Thread(
+            target=self._thread_helper_check_last_active
+        ).start()
 
         # TODO Move to using scheduler_idks as if we run multiple schedulers
         # we'll only record when the latest one started
@@ -236,12 +379,30 @@ class Scheduler:
                     data: dt = record.last_active # type: ignore
                     return data
 
-    def raise_alert(self, message: str):
+    def _thread_helper_check_last_active(self):
         """
-        Raise an alert using the monitors and the given message.
+        This is the thread function that will check the last active time
+        of the scheduler and send a messages if it's been inactive for over
+        5 minutes.
         """
-        for monitor in self.monitors:
-            monitor.alert.send_alert(message)
+        while True:
+            # If the scheduler hasn't been run/no last active
+            # then we don't want to send a message - mostly to avoid
+            # sending a message on the first run and at startup
+            time.sleep(120)
+            last_active = self.get_last_active()
+            if last_active is not None:
+                # if it's over 10 minutes since the last active time
+                # then assume roughly 5 alerts have been sent and stop
+                if last_active < dt.now() - td(minutes=10):
+                    continue
+                elif last_active < dt.now() - td(minutes=5):
+                    Producer().send_message(
+                        channel=MqueueChannels.inactive_scheduler,
+                        message=MqueueChannels.inactive_scheduler.message_type(
+                            scheduler_id=self.scheduler_idk
+                        )
+                    )
 
     def update_active(self):
         """
@@ -344,7 +505,16 @@ class Scheduler:
                             },
                             zero_duration=True
                         )
-                        self.raise_alert(f'Historical run failed to start/finish: {run.run_idk}')
+                        Producer().send_message(
+                            channel=MqueueChannels.historical_run,
+                            message=MqueueChannels.historical_run.message_type(
+                                scheduler_id=self.scheduler_idk,
+                                task_id=task.task_idk,
+                                run_id=run.run_idk,
+                                note='Historical run failed to start/finish'
+                            )
+                        )
+
                         historical_count += 1
                     if run.status == RunStatus.RUNNING:
                         if run.last_active is not None:
@@ -355,7 +525,15 @@ class Scheduler:
                                     },
                                     zero_duration=True
                                 )
-                                self.raise_alert(f'(task: {task.task_idk}) Failed inactive run: {run.run_idk}')
+                                Producer().send_message(
+                                    channel=MqueueChannels.historical_run,
+                                    message=MqueueChannels.historical_run.message_type(
+                                        scheduler_id=self.scheduler_idk,
+                                        task_id=task.task_idk,
+                                        run_id=run.run_idk,
+                                        note='Run has been inactive for over 5 minutes'
+                                    )
+                                )
                                 historical_count += 1
                 orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
                     'task_id': task.task_idk,
@@ -410,7 +588,15 @@ class Scheduler:
                                             'message': 'Run has been inactive for over 5 minutes'
                                         }
                                     )
-                                    self.raise_alert(f'Failed inactive run: {last_run.run_idk}')
+                                    Producer().send_message(
+                                        channel=MqueueChannels.historical_run,
+                                        message=MqueueChannels.historical_run.message_type(
+                                            scheduler_id=self.scheduler_idk,
+                                            task_id=task.task_idk,
+                                            run_id=last_run.run_idk,
+                                            note='Run has been inactive for over 5 minutes'
+                                        )
+                                    )
                         if self.disable_stale_tasks and last_run is not None:
                             # If the task hasn't been active since the last run,
                             # then it's stale and should be disabled.
@@ -418,7 +604,13 @@ class Scheduler:
                             # so a task should have been active many times since the last run
                             if task.last_active < min(last_run.scheduled_time, dt.now() - td(minutes=5)):
                                 task.set_status('inactive', 'Task has been inactive since last scheduled run')
-                                self.raise_alert(f'Disabled stale task: {task.task_idk}')
+                                Producer().send_message(
+                                    channel=MqueueChannels.inactive_task,
+                                    message=MqueueChannels.inactive_task.message_type(
+                                        scheduler_id=self.scheduler_idk,
+                                        task_id=task.task_idk
+                                    )
+                                )
                                 continue
                         # print('Run due for task:', task.task_idk)
                         run = task.schedule_run(schedule)
