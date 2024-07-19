@@ -102,6 +102,10 @@ class ThreadHandler():
                     run.update_active()
                     self.update_active_all_tasks()
                     run.reload()
+                    # TODO: Review later if this check is required
+                    # as set_running should be called before this point
+                    if run.status == tasks.RunStatus.QUEUED:
+                        run.set_running()
                     # If the run has been cancelled then we need to stop the thread
                     if run.status == tasks.RunStatus.CANCELLED:
                         orcha_threading.expire_timeout_remainder(
