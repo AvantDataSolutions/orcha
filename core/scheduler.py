@@ -14,7 +14,7 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 
 from orcha.core import monitors
-from orcha.core.monitors import AlertBase, MonitorBase
+from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.core.tasks import RunStatus, TaskItem
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
@@ -212,37 +212,60 @@ class SchedulerMonitor(MonitorBase):
             return
 
         if isinstance(message, MqueueChannels._InactiveSchedulerMessage):
-            print('Inactive scheduler message')
-            self.alert.send_alert(f'''
-                <b>Inactive Scheduler Alert</b>
-                <br>
-                <br><b>Scheduler ID</b>
-                <br>{message.scheduler_id}
-                <br>
-                <br>Scheduler has been inactive for over 5 minutes. Please
-                check the scheduler to ensure it's running correctly.
-            ''')
+            if self.alert.output_type == AlertOutputType.HTML:
+                self.alert.send_alert(f'''
+                    <b>Inactive Scheduler Alert</b>
+                    <br>
+                    <br><b>Scheduler ID</b>
+                    <br>{message.scheduler_id}
+                    <br>
+                    <br>Scheduler has been inactive for over 5 minutes. Please
+                    check the scheduler to ensure it's running correctly.
+                ''')
+            else:
+                self.alert.send_alert(f'''
+                    Inactive Scheduler Alert
+                    Scheduler ID: {message.scheduler_id}
+                    Scheduler has been inactive for over 5 minutes. Please
+                    check the scheduler to ensure it's running correctly.
+                ''')
         elif isinstance(message, MqueueChannels._InactiveTaskMessage):
-            self.alert.send_alert(f'''
-                <b>Inactive Task Alert</b>
-                <br>
-                <br><b>Task ID</b>
-                <br>{self._task_to_ui_url(message.task_id)}
-                <br>
-                <br>Task task has been disabled due to inactivity. Please
-                check the task runner and re-enable the task if required.
-            ''')
+            if self.alert.output_type == AlertOutputType.HTML:
+                self.alert.send_alert(f'''
+                    <b>Inactive Task Alert</b>
+                    <br>
+                    <br><b>Task ID</b>
+                    <br>{self._task_to_ui_url(message.task_id)}
+                    <br>
+                    <br>Task task has been disabled due to inactivity. Please
+                    check the task runner and re-enable the task if required.
+                ''')
+            else:
+                self.alert.send_alert(f'''
+                    Inactive Task Alert
+                    Task ID: {message.task_id}
+                    Task task has been disabled due to inactivity. Please
+                    check the task runner and re-enable the task if required.
+                ''')
         elif isinstance(message, MqueueChannels._HistoricalRunMessage):
-            self.alert.send_alert(f'''
-                <b>Historical Run Alert</b>
-                <br>
-                <br><b>Task ID</b>
-                <br>{self._task_to_ui_url(message.task_id)}
-                <br><b>Run ID</b>
-                <br>{self._run_to_ui_url(message.run_id)}
-                <br><b>Note</b>
-                <br>{message.note}
-            ''')
+            if self.alert.output_type == AlertOutputType.HTML:
+                self.alert.send_alert(f'''
+                    <b>Historical Run Alert</b>
+                    <br>
+                    <br><b>Task ID</b>
+                    <br>{self._task_to_ui_url(message.task_id)}
+                    <br><b>Run ID</b>
+                    <br>{self._run_to_ui_url(message.run_id)}
+                    <br><b>Note</b>
+                    <br>{message.note}
+                ''')
+            else:
+                self.alert.send_alert(f'''
+                    Historical Run Alert
+                    Task ID: {message.task_id}
+                    Run ID: {message.run_id}
+                    Note: {message.note}
+                ''')
 
 
 @dataclass

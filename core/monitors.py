@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Callable
 
 from orcha.utils import email, graph_api, mqueue
@@ -59,14 +60,20 @@ class MqueueConfig:
 
 MONITOR_CONFIG: Config | None = None
 
+class AlertOutputType(Enum):
+    PLAIN_TEXT = 'plain_text'
+    JSON = 'json'
+    HTML = 'html'
 
-@dataclass
+
 class AlertBase(ABC):
     """
     The base class for all alert classes. Has one method
     to send alerts which must be implemented by all
     alert classes.
     """
+    output_type: AlertOutputType
+
     @abstractmethod
     def send_alert(self, message: str):
         """
@@ -75,13 +82,14 @@ class AlertBase(ABC):
         pass
 
 
-@dataclass
 class PrintAlert(AlertBase):
     """
     This class is used to print an alert. Typically used
     for testing or on-device instances where logging to
     the console is sufficient.
     """
+    output_type = AlertOutputType.PLAIN_TEXT
+
     def send_alert(self, message: str):
         """
         This method is used to print an alert.
@@ -89,7 +97,6 @@ class PrintAlert(AlertBase):
         print(message)
 
 
-@dataclass
 class MicrosoftEmailAlert(AlertBase):
     """
     This class is used to send an email alert using the
@@ -100,8 +107,11 @@ class MicrosoftEmailAlert(AlertBase):
     - to: The email address to send the alert to.
     - subject: The subject of the email.
     """
-    to: list[str]
-    subject: str
+    output_type = AlertOutputType.HTML
+
+    def __init__(self, to: list[str], subject: str):
+        self.to = to
+        self.subject = subject
 
     def send_alert(self, message: str):
         """
@@ -130,6 +140,7 @@ class MicrosoftEmailAlert(AlertBase):
             body=message,
             importance='high'
         )
+
 
 @dataclass
 class MonitorBase(ABC):

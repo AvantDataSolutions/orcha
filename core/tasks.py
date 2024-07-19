@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
 
 from orcha.core import monitors
-from orcha.core.monitors import AlertBase, MonitorBase
+from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import (
@@ -1313,15 +1313,23 @@ class FailedRunsMonitor(TaskMonitorBase):
             return
         if fail_count >= self.failure_count:
             times_str = 'time' if fail_count == 1 else 'times'
-            output_str = json.dumps(run.output, indent=4)
-            output_str = output_str.replace('\\n', '<br>')
-            message_string = f'''
-                <b>Task {self._task_to_ui_url(task)} has failed {fail_count} {times_str}</b>
-                <br>
-                <br><b>Run ID</b>
-                <br>{self._run_to_ui_url(run)}
-                <br>
-                <br><b>Run Output:</b>
-                <pre>{output_str}</pre>
-            '''
-            self.alert.send_alert(message=message_string)
+            if self.alert.output_type == AlertOutputType.HTML:
+                output_str = json.dumps(run.output, indent=4)
+                output_str = output_str.replace('\\n', '<br>')
+                message_string = f'''
+                    <b>Task {self._task_to_ui_url(task)} has failed {fail_count} {times_str}</b>
+                    <br>
+                    <br><b>Run ID</b>
+                    <br>{self._run_to_ui_url(run)}
+                    <br>
+                    <br><b>Run Output:</b>
+                    <pre>{output_str}</pre>
+                '''
+                self.alert.send_alert(message=message_string)
+            else:
+                message_string = f'''
+                    Task {task.name} has failed {fail_count} {times_str}
+                    Run ID: {run.run_idk}
+                    Run Output: {json.dumps(run.output)}
+                '''
+                self.alert.send_alert(message=message_string)
