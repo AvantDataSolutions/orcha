@@ -175,6 +175,18 @@ class ThreadHandler():
             )
             # If we had an exception then we don't want to set it as a success here
             if run.status == tasks.RunStatus.RUNNING and not thread_exception:
+                run_s_set = task.get_schedule_from_id(run.set_idf)
+                # Check if we have any trigger tasks to run
+                if run_s_set and run_s_set.trigger_task:
+                    trigger_task = run_s_set.trigger_task[0]
+                    trigger_task_sset = run_s_set.trigger_task[1]
+                    if not trigger_task_sset:
+                        trigger_task_sset = trigger_task.schedule_sets[0]
+                    trigger_task.trigger_run(
+                        schedule=trigger_task_sset,
+                        trigger_task=task,
+                        scheduled_time=run.scheduled_time
+                    )
                 run.set_success()
 
         # Because we have multiple schedules for a task we need

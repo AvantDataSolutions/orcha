@@ -19,6 +19,7 @@ from sqlalchemy.sql import text as sql
 
 from orcha.core import monitors
 from orcha.core.monitors import AlertBase, MonitorBase
+from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import (
     get,
@@ -28,6 +29,8 @@ from orcha.utils.sqlalchemy import (
 )
 
 print('Loading:',__name__)
+
+tasks_log = LogManager('tasks')
 
 class MqueueChannels():
 
@@ -114,6 +117,7 @@ def _setup_sqlalchemy(
     class RunRecord(Base):
         __tablename__ = 'runs'
 
+        # updated = Column(DateTime(timezone=False))
         run_idk = Column(String, primary_key=True)
         task_idf = Column(String)
         set_idf = Column(String)
@@ -160,23 +164,40 @@ class ScheduleSet():
     set_idk: str | None
     cron_schedule: str
     config: dict
+    trigger_task: tuple[TaskItem, ScheduleSet | None] | None = None
+
+    def __init__(
+            self,
+            cron_schedule: str,
+            config: dict,
+            trigger_task: tuple[TaskItem, ScheduleSet | None] | None = None
+        ) -> None:
+        """
+        Creates a schedule set for a task with a cron schedule and config.
+        set_idk is generated automatically when the schedule set is added to
+        a task which allows the same cron schedule to be used on multiple tasks.
+        #### Parameters:
+        - cron_schedule: The cron schedule for the task
+        - config: The config for the task for this schedule
+        - trigger_task: The task (and schedule set) to be triggered on successful completion
+        of this schedule run.
+        """
+        self.set_idk = None
+        self.cron_schedule = cron_schedule
+        self.config = config
+        self.trigger_task = trigger_task
 
     @staticmethod
     def list_to_dict(schedule_sets: list[ScheduleSet]) -> list[dict]:
         return [x.to_dict() for x in schedule_sets]
 
-    def __init__(self, cron_schedule: str, config: dict) -> None:
-        """
-        Creates a schedule set for a task with a cron schedule and config.
-        set_idk is generated automatically when the schedule set is added to
-        a task which allows the same cron schedule to be used on multiple tasks.
-        """
-        self.set_idk = None
-        self.cron_schedule = cron_schedule
-        self.config = config
-
     @staticmethod
-    def create_with_key(set_idk: str, cron_schedule: str, config: dict) -> ScheduleSet:
+    def create_with_key(
+            set_idk: str,
+            cron_schedule: str,
+            config: dict,
+            trigger_task: tuple[TaskItem, ScheduleSet | None] | None = None
+        ) -> ScheduleSet:
         """
         Creates a schedule set for a task with a cron schedule and config.
         set_idk is generated automatically when the schedule set is added to
@@ -184,16 +205,52 @@ class ScheduleSet():
         """
         s_set = ScheduleSet(
             cron_schedule=cron_schedule,
-            config=config
+            config=config,
+            trigger_task=trigger_task
         )
         s_set.set_idk = set_idk
         return s_set
 
+    @classmethod
+    def from_json(cls, json_str: str) -> ScheduleSet:
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ScheduleSet:
+        s_set = cls.create_with_key(
+            set_idk=data['set_idk'],
+            cron_schedule=data['cron_schedule'],
+            config=data['config'],
+        )
+        if data.get('trigger_task', None) is None:
+            s_set.trigger_task = None
+        else:
+            task_item = TaskItem.get(data['trigger_task']['task_id'])
+            if task_item is None:
+                raise Exception('Task not found for trigger task')
+            s_set.trigger_task = (
+                task_item,
+                task_item.get_schedule_from_id(data['trigger_task']['set_id'])
+            )
+        return s_set
+
     def to_dict(self):
+        if not self.trigger_task:
+            trigger_task_json = None
+        else:
+            set_id = None
+            if self.trigger_task[1] is not None:
+                set_id = self.trigger_task[1].set_idk
+            trigger_task_json = {
+                'task_id': self.trigger_task[0].task_idk,
+                'set_id': set_id
+            }
         return {
             'set_idk': self.set_idk,
             'cron_schedule': self.cron_schedule,
-            'config': self.config
+            'config': self.config,
+            'trigger_task': trigger_task_json
         }
 
 
@@ -229,7 +286,7 @@ class TaskItem():
         sets = []
         for schedule_set in schedule_sets:
             if isinstance(schedule_set, dict):
-                sets.append(ScheduleSet.create_with_key(**schedule_set))
+                sets.append(ScheduleSet.from_dict(schedule_set))
             else:
                 sets.append(schedule_set)
         self.task_idk = task_idk
@@ -320,7 +377,8 @@ class TaskItem():
             new_s_sets.append(ScheduleSet.create_with_key(
                 set_idk=f'{task_idk}_{schedule.cron_schedule}',
                 cron_schedule=schedule.cron_schedule,
-                config=schedule.config
+                config=schedule.config,
+                trigger_task=schedule.trigger_task
             ))
 
         update_needed = False
@@ -506,6 +564,29 @@ class TaskItem():
             schedule=schedule
         )
 
+    def trigger_run(
+            self,
+            schedule: ScheduleSet,
+            trigger_task: TaskItem,
+            scheduled_time: dt
+        ) -> RunItem:
+        """
+        Triggers a run for the task and schedule set and returns the run instance.
+        This creates a run regardless of whether a run is due or not.
+        """
+        run = RunItem.create(
+            task=self,
+            run_type='triggered',
+            scheduled_time=scheduled_time,
+            schedule=schedule
+        )
+
+        run.set_output({
+            'trigger_task': trigger_task.task_idk
+        }, merge=True)
+
+        return run
+
     def get_queued_runs(self) -> list[RunItem]:
         return RunItem.get_all_queued(task=self)
 
@@ -581,17 +662,19 @@ class RunStatus():
         self.status = status
         self.text = text
 
-RunType = Literal['scheduled', 'manual', 'retry']
+RunType = Literal['scheduled', 'manual', 'retry', 'triggered']
 """
 The types of runs that can be created.
 - scheduled: A run that is created by the scheduler
 - manual: A run that is created manually as a 'one-off'
 - retry: A run that is created as a retry of a failed run
+- triggered: A run that is triggered on completion of another task
 """
 
 @dataclass
 class RunItem():
     _task: TaskItem
+    # TODO updated: dt
     run_idk: str
     task_idf: str
     set_idf: str
@@ -658,6 +741,7 @@ class RunItem():
 
         item = RunItem(
             _task = task,
+            # TODO updated = dt.now(),
             run_idk = run_idk,
             task_idf = task.task_idk,
             set_idf = schedule.set_idk,
@@ -836,20 +920,82 @@ class RunItem():
             '''), {'run_idk': self.run_idk})
 
     def _update_db(self):
-        with s_maker.begin() as session:
-            session.merge(RunRecord(
-                run_idk = self.run_idk,
-                task_idf = self.task_idf,
-                set_idf = self.set_idf,
-                run_type = self.run_type,
-                scheduled_time = self.scheduled_time,
-                start_time = self.start_time,
-                end_time = self.end_time,
-                last_active = self.last_active,
-                config = self.config,
-                status = self.status,
-                output = self.output
-            ))
+        try:
+            with s_maker.begin() as session:
+                # TODO potential code for detecting concurrent updates
+                #       and avoiding overwriting changes
+                # update the run in the database if updated == updated
+                # to prevent overwriting changes from other processes
+                # and then update the updated time to the current time
+                # updated_time = dt.now()
+                # updated_rows = session.execute(sql('''
+                #     UPDATE orcha.runs
+                #     SET
+                #         updated = :updated,
+                #         task_idf = :task_idf,
+                #         set_idf = :set_idf,
+                #         run_type = :run_type,
+                #         scheduled_time = :scheduled_time,
+                #         start_time = :start_time,
+                #         end_time = :end_time,
+                #         last_active = :last_active,
+                #         config = :config,
+                #         status = :status,
+                #         output = :output
+                #     WHERE
+                #         run_idk = :run_idk
+                #         AND (updated = :updated OR :ignore_updated_check)
+                #     RETURNING *
+                # '''), {
+                #     'updated': updated_time,
+                #     'run_idk': self.run_idk,
+                #     'task_idf': self._task.task_idk,
+                #     'set_idf': self.set_idf,
+                #     'run_type': self.run_type,
+                #     'scheduled_time': self.scheduled_time,
+                #     'start_time': self.start_time,
+                #     'end_time': self.end_time,
+                #     'last_active': self.last_active,
+                #     'config': self.config,
+                #     'status': self.status,
+                #     'output': self.output,
+                #     'ignore_updated_check': ignore_updated_check
+                # })
+                session.merge(RunRecord(
+                    run_idk = self.run_idk,
+                    task_idf = self._task.task_idk,
+                    set_idf = self.set_idf,
+                    run_type = self.run_type,
+                    scheduled_time = self.scheduled_time,
+                    start_time = self.start_time,
+                    end_time = self.end_time,
+                    last_active = self.last_active,
+                    config = self.config,
+                    status = self.status,
+                    output = self.output
+                ))
+
+                # TODO potential code for detecting concurrent updates
+                # if len(updated_rows.all()) == 0:
+                #     return False
+                # self.updated = updated_time
+                # return True
+        except Exception as e:
+            tasks_log.add_entry(
+                actor='tasks',
+                category='database',
+                text='error updating run in database',
+                json={
+                    'error': str(e),
+                    'run_idk': self.run_idk,
+                    'task_idk': self._task.task_idk,
+                    'status': self.status,
+                    'start_time': str(self.start_time),
+                    'end_time': str(self.end_time),
+                    'output': str(self.output)
+                }
+            )
+            raise Exception(f'Error updating run in database: {e}') from e
 
     def update_active(self):
         self.last_active = dt.now()
@@ -859,6 +1005,9 @@ class RunItem():
             self, status: str, start_time: dt | None ,
             end_time: dt | None, output: dict | None = None
         ):
+        # Before doing any changes, reload the run from the database
+        # to make sure we're not overwriting changes from other processes
+        self.reload()
         self.status = status
         self.start_time = start_time
         self.end_time = end_time
