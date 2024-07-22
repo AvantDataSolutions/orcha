@@ -277,7 +277,8 @@ class Consumer():
             )
             response = requests.post(
                 url=f'{Consumer.broker_host}:{Consumer.broker_port}/register-consumer',
-                json=data.model_dump()
+                json=data.model_dump(),
+                timeout=10
             )
 
             if response.status_code != 200:
@@ -290,7 +291,8 @@ class Consumer():
         data = SendAckInput(message_id=message_id)
         response = requests.post(
             url=f'{Consumer.broker_host}:{Consumer.broker_port}/ack-message',
-            json=data.model_dump()
+            json=data.model_dump(),
+            timeout=10
         )
 
         if response.status_code == 200:
@@ -325,7 +327,8 @@ class Producer():
         data = SendMessageInput(channel=channel.name, message=message.to_json())
         response = requests.post(
             url=f'{self.broker_host}:{self.broker_port}/send-message',
-            json=data.model_dump()
+            json=data.model_dump(),
+            timeout=10
         )
 
         if response.status_code == 200:
@@ -525,7 +528,7 @@ class Broker():
             name=name,
             message=message_str
         )
-        response = requests.post(url, json=data.model_dump(), timeout=5)
+        response = requests.post(url, json=data.model_dump(), timeout=10)
         return response
 
 
