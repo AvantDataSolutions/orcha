@@ -191,6 +191,11 @@ class RestSink(SinkBase):
                 query_params = self.query_params | query_params_merge
             else:
                 query_params = self.query_params
+        else:
+            if query_params_merge is not None:
+                query_params = {} | query_params_merge
+            else:
+                query_params = None
 
         if self.data_entity is None:
             raise Exception('No data entity set for sink')
