@@ -6,6 +6,7 @@ from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta as td
+from enum import Enum
 from typing import Callable, Literal
 from uuid import uuid4
 
@@ -22,7 +23,6 @@ from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import (
-    get,
     get_latest_versions,
     postgres_scaffold,
     sqlalchemy_build,
@@ -127,6 +127,7 @@ def _setup_sqlalchemy(
         end_time = Column(DateTime(timezone=False))
         last_active = Column(DateTime(timezone=False))
         config = Column(PG_JSON)
+        progress = Column(String)
         status = Column(String)
         output = Column(PG_JSON)
 
@@ -144,9 +145,9 @@ def _setup_sqlalchemy(
             CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_set_scheduled
             ON orcha.runs (task_idf, scheduled_time, set_idf, run_type);
 
-            --DROP INDEX IF EXISTS orcha.idx_orcha_runs_taskidf_status;
-            CREATE INDEX IF NOT EXISTS idx_orcha_runs_taskidf_status
-            ON orcha.runs (task_idf, status);
+            --DROP INDEX IF EXISTS orcha.idx_orcha_runs_taskidf_status_progress;
+            CREATE INDEX IF NOT EXISTS idx_orcha_runs_taskidf_status_progress
+            ON orcha.runs (task_idf, status, progress);
         '''))
 
 """
@@ -156,7 +157,7 @@ def _setup_sqlalchemy(
 """
 
 
-TaskStatus = Literal['enabled', 'disabled', 'inactive', 'deleted']
+TaskStatus = Literal['enabled', 'disabled', 'error', 'inactive', 'deleted']
 
 
 @dataclass
@@ -552,40 +553,59 @@ class TaskItem():
             return True, last_run
         return last_run.scheduled_time < self.get_last_scheduled(schedule), last_run
 
-    def schedule_run(self, schedule: ScheduleSet) -> RunItem:
+    def schedule_run(
+            self,
+            schedule: ScheduleSet,
+            force_run: bool = False
+        ) -> RunItem | None:
         """
         Schedules a run for the task and schedule set and returns the run instance.
         This creates a run regardless of whether a run is due or not.
+        #### Parameters:
+        - schedule: The schedule set to schedule the run for
+        - force_run: If True, the run will be created even if the task is not enabled
         """
-        return RunItem.create(
-            task=self,
-            run_type='scheduled',
-            scheduled_time=self.get_last_scheduled(schedule),
-            schedule=schedule
-        )
+        if self.status == 'enabled' or force_run:
+            return RunItem.create(
+                task=self,
+                run_type='scheduled',
+                scheduled_time=self.get_last_scheduled(schedule),
+                schedule=schedule
+            )
+        else:
+            return None
 
     def trigger_run(
             self,
             schedule: ScheduleSet,
             trigger_task: TaskItem,
-            scheduled_time: dt
-        ) -> RunItem:
+            scheduled_time: dt,
+            force_run: bool = False
+        ) -> RunItem | None:
         """
         Triggers a run for the task and schedule set and returns the run instance.
         This creates a run regardless of whether a run is due or not.
+        #### Parameters:
+        - schedule: The schedule set to trigger the run for
+        - trigger_task: The task that triggered this run
+        - scheduled_time: The time the run was scheduled to run
+        - force_run: If True, the run will be created even if the task is not enabled
         """
-        run = RunItem.create(
-            task=self,
-            run_type='triggered',
-            scheduled_time=scheduled_time,
-            schedule=schedule
-        )
+        if self.status == 'enabled' or force_run:
+            run = RunItem.create(
+                task=self,
+                run_type='triggered',
+                scheduled_time=scheduled_time,
+                schedule=schedule
+            )
 
-        run.set_output({
-            'trigger_task': trigger_task.task_idk
-        }, merge=True)
+            run.set_output({
+                'trigger_task': trigger_task.task_idk
+            }, merge=True)
 
-        return run
+            return run
+        else:
+            return None
 
     def get_queued_runs(self) -> list[RunItem]:
         return RunItem.get_all_queued(task=self)
@@ -647,20 +667,28 @@ class TaskItem():
 """
 
 
-class RunStatus():
+RunStatus = Literal['unstarted', 'pending', 'success', 'warn', 'failed', 'cancelled']
+class RunStatusEnum(Enum):
     """
-    The available statuses for a run instance.
+    The Enum for the status of a run primarily as an auto-complete helper
+    as a replacement for the string literals.
     """
-    QUEUED = 'queued'
-    RUNNING = 'running'
-    SUCCESS = 'success'
-    WARN = 'warn'
-    FAILED = 'failed'
-    CANCELLED = 'cancelled'
+    unstarted = 'unstarted'
+    pending = 'pending'
+    success = 'success'
+    warn = 'warn'
+    failed = 'failed'
+    cancelled = 'cancelled'
 
-    def __init__(self, status: str, text: str) -> None:
-        self.status = status
-        self.text = text
+RunProgress = Literal['queued', 'running', 'complete']
+class RunProgressEnum(Enum):
+    """
+    The Enum for the progress of a run primarily as an auto-complete helper
+    as a replacement for the string literals.
+    """
+    queued = 'queued'
+    running = 'running'
+    complete = 'complete'
 
 RunType = Literal['scheduled', 'manual', 'retry', 'triggered']
 """
@@ -684,7 +712,8 @@ class RunItem():
     end_time: dt | None
     last_active: dt | None
     config: dict
-    status: str
+    status: RunStatus
+    progress: RunProgress
     output: dict | None = None
     """
         This class manages the run instances for tasks and write data back
@@ -703,7 +732,8 @@ class RunItem():
         - end_time: The time the run ended
         - last_active: The last time the run was active
         - config: The config for the run from the schedule set
-        - status: The status of the run (queued, running, success, warn, failed, cancelled)
+        - status: The status of the run (success, warn, failed, cancelled)
+        - progress: The progress of the run (queued, running, complete)
         - output: The output of the run which includes all outputs from modules and the task function
     """
 
@@ -722,6 +752,35 @@ class RunItem():
         return  cur_task
 
     @staticmethod
+    def _from_record(record: RunRecord, task: TaskItem | None) -> RunItem:
+        task_idf = None
+        if hasattr(record, 'task_idf'):
+            task_idf = record.task_idf
+        if task_idf is None:
+            raise Exception('Task id not found for run')
+        if task and task.task_idk != task_idf:
+            raise Exception('Task id from record does not match provided task')
+        if task is None:
+            task = TaskItem.get(task_idf) # type: ignore
+        if task is None:
+            raise Exception('Task not found for run')
+        return RunItem(
+            _task = task,
+            run_idk = record.run_idk, # type: ignore
+            task_idf = record.task_idf, # type: ignore
+            set_idf = record.set_idf, # type: ignore
+            run_type = record.run_type, # type: ignore
+            scheduled_time = record.scheduled_time, # type: ignore
+            start_time = record.start_time, # type: ignore
+            end_time = record.end_time, # type: ignore
+            last_active = record.last_active, # type: ignore
+            config = record.config, # type: ignore
+            status = record.status, # type: ignore
+            progress = record.progress, # type: ignore
+            output = record.output # type: ignore
+        )
+
+    @staticmethod
     def create(
             task: TaskItem, run_type: RunType,
             schedule: ScheduleSet, scheduled_time: dt
@@ -734,7 +793,6 @@ class RunItem():
         confirm_initialised()
 
         run_idk = str(uuid4())
-        status = RunStatus.QUEUED
 
         if schedule.set_idk is None:
             raise Exception('Schedule set idk not set')
@@ -751,7 +809,8 @@ class RunItem():
             end_time = None,
             last_active = None,
             config = schedule.config,
-            status = status,
+            status = 'unstarted',
+            progress='queued',
             output = None
         )
 
@@ -763,11 +822,22 @@ class RunItem():
             task: str | TaskItem,
             since: dt,
             schedule: ScheduleSet | None = None,
-            run_type: RunType | None = None
+            run_type: RunType | None = None,
+            status: RunStatus | None = None,
+            progress: RunProgress | None = None
         ) -> list[RunItem]:
         """
         Gets all runs for a task since a particular time (inclusive)
         for a particular schedule set (optional, None for all runs)
+        #### Parameters:
+        - task: The task instance or task id for the task
+        - since: The time to get runs since
+        - schedule: The schedule set to get the runs for, or None for all schedules
+        - run_type: The type of run to get the runs for, or None for all types
+        - status: The status of the runs to get, or None for all statuses
+        - progress: The progress of the runs to get, or None for all progress
+        #### Returns:
+        - A list of RunItem instances for the task and schedule set
         """
         confirm_initialised()
         task = RunItem._task_id_populate(task)
@@ -776,69 +846,61 @@ class RunItem():
         task_schedule_sets = [x.set_idk for x in task.schedule_sets]
         if schedule is not None and schedule.set_idk not in task_schedule_sets:
             raise Exception('Schedule set not found for task')
-        pairs = [
-            ('task_idf', '=', task.task_idk),
-            ('scheduled_time', '>=', since.isoformat())
-        ]
-        if run_type is not None:
-            pairs.append(('run_type', '=', run_type))
-        if schedule is not None:
-            if schedule.set_idk is None:
-                raise Exception('set_idk not set: cannot get runs for schedule set without id')
-            pairs.append(('set_idf', '=', schedule.set_idk))
-        data = get(
-            s_maker = s_maker,
-            table='orcha.runs',
-            select_columns='*',
-            match_pairs=pairs,
-        )
-        return [RunItem(task, **(x._asdict())) for x in data]
+
+        with s_maker.begin() as session:
+            filter_sets = [
+                RunRecord.task_idf == task.task_idk,
+                RunRecord.scheduled_time >= since
+            ]
+            if status is not None:
+                filter_sets.append(RunRecord.status == status)
+            if progress is not None:
+                filter_sets.append(RunRecord.progress == progress)
+            if run_type is not None:
+                filter_sets.append(RunRecord.run_type == run_type)
+            if schedule is not None:
+                if schedule.set_idk is None:
+                    raise Exception('set_idk not set: cannot get runs for schedule set without id')
+                filter_sets.append(RunRecord.set_idf == schedule.set_idk)
+            records = session.query(RunRecord).filter(*filter_sets).all()
+            return [RunItem._from_record(r, task) for r in records]
 
     @staticmethod
     def get_all_queued(
             task: str | TaskItem,
             schedule: ScheduleSet | None = None,
         ) -> list[RunItem]:
+        """
+        Returns all runs that are queued (and unstarted) for a task and schedule set.
+        """
         confirm_initialised()
         task = RunItem._task_id_populate(task)
-        pairs = [
-            ('task_idf', '=', task.task_idk),
-            ('status', '=', RunStatus.QUEUED)
-        ]
-        if schedule is not None:
-            if schedule.set_idk is None:
-                raise Exception('set_idk not set: cannot get runs for schedule set without id')
-            pairs.append(('set_idf', '=', schedule.set_idk))
-        data = get(
-            s_maker = s_maker,
-            table='orcha.runs',
-            select_columns='*',
-            match_pairs=pairs,
+
+        return RunItem.get_all(
+            task=task,
+            since=dt.min,
+            schedule=schedule,
+            status='unstarted',
+            progress='queued'
         )
-        return [RunItem(task, **(x._asdict())) for x in data]
 
     @staticmethod
     def get_running_runs(
             task: str | TaskItem,
             schedule: ScheduleSet | None = None,
         ) -> list[RunItem]:
+        """
+        Returns all runs that are currently running for a task and schedule set.
+        """
         confirm_initialised()
         task = RunItem._task_id_populate(task)
-        pairs = [
-            ('task_idf', '=', task.task_idk),
-            ('status', '=', RunStatus.RUNNING)
-        ]
-        if schedule is not None:
-            if schedule.set_idk is None:
-                raise Exception('set_idk not set: cannot get runs for schedule set without id')
-            pairs.append(('set_idf', '=', schedule.set_idk))
-        data = get(
-            s_maker = s_maker,
-            table='orcha.runs',
-            select_columns='*',
-            match_pairs=pairs,
+
+        return RunItem.get_all(
+            task=task,
+            since=dt.min,
+            schedule=schedule,
+            progress='running'
         )
-        return [RunItem(task, **(x._asdict())) for x in data]
 
     @staticmethod
     def get_latest(
@@ -846,63 +908,57 @@ class RunItem():
             schedule: ScheduleSet | None = None,
             run_type: RunType | None = None
         ) -> RunItem | None:
+        """
+        Returns the latest run (scheduled time descending) for a task and schedule set.
+        #### Parameters:
+        - task: The task instance or task id for the task
+        - schedule: The schedule set to get the latest run for, or None for all schedules
+        - run_type: The type of run to get the latest for, or None for all types
+
+        #### Returns:
+        - The latest run for the task and schedule set, or None if no runs found
+        """
         confirm_initialised()
         task = RunItem._task_id_populate(task)
-        # To keep query time less dependent on the number of runs in the database
-        # we can use the last run time and the time between runs to get the
-        # window where the last run should have occurred
-        if schedule is not None:
-            last_run_time = task.get_last_scheduled(schedule)
-            time_between_runs = task.get_time_between_runs(schedule)
-            runs = RunItem.get_all(
-                task=task,
-                since=last_run_time - time_between_runs*2,
-                schedule=schedule,
-                run_type=run_type
-            )
-        else:
-            # if we don't have a schedule given, then let the below get_all
-            # grab all runs and filter them
-            runs = []
-        if len(runs) == 0:
-            # If we didn't get any runs - e.g. when the runner is started up
-            # then query the full time window for any last run
-            runs = RunItem.get_all(task=task, since=dt.min, schedule=schedule)
-        # drop runs that aren't of the right type
-        if run_type is not None:
-            runs = [x for x in runs if x.run_type == run_type]
 
-        if len(runs) == 0:
-            return None
-        # order runs by scheduled_time
-        runs = sorted(runs, key=lambda x: x.scheduled_time, reverse=True)
-        return runs[0]
+        with s_maker.begin() as session:
+            filter_sets = [
+                RunRecord.task_idf == task.task_idk
+            ]
+            if run_type is not None:
+                filter_sets.append(RunRecord.run_type == run_type)
+            if schedule is not None:
+                if schedule.set_idk is None:
+                    raise Exception(
+                        "set_idk not set: cannot get runs for schedule set without id"
+                    )
+                filter_sets.append(RunRecord.set_idf == schedule.set_idk)
+            record = (
+                session.query(RunRecord)
+                .filter(*filter_sets)
+                .order_by(RunRecord.scheduled_time.desc())
+                .first()
+            )
+            if record is None:
+                return None
+            return RunItem._from_record(record, task)
 
     @staticmethod
     def get(run_id: str, task: TaskItem | None = None) -> RunItem | None:
         confirm_initialised()
-        data = get(
-            s_maker = s_maker,
-            table='orcha.runs',
-            select_columns='*',
-            match_pairs=[
-                ('run_idk', '=', run_id)
-            ],
-        )
-        if len(data) == 0:
-            return None
-        task_idf = None
-        if hasattr(data[0], 'task_idf'):
-            task_idf = data[0].task_idf
-        if task is None:
-            if task_idf is None:
-                raise Exception('task_idf not found in run data')
-            task = TaskItem.get(task_idf)
-            if task is None:
-                raise Exception('Task not found')
-        return RunItem(task, **(data[0]._asdict()))
+        with s_maker.begin() as session:
+            data = session.query(RunRecord).filter(
+                RunRecord.run_idk == run_id).all()
+            if len(data) == 0:
+                return None
+            if len(data) > 1:
+                raise Exception('Multiple runs found with same idk')
+            return RunItem._from_record(data[0], task)
 
     def reload(self):
+        """
+        Used to reload the run from the database to get the latest data.
+        """
         db_data = RunItem.get(self.run_idk, task=self._task)
         if db_data is None:
             raise Exception('Run not found in database')
@@ -972,6 +1028,7 @@ class RunItem():
                     last_active = self.last_active,
                     config = self.config,
                     status = self.status,
+                    progress = self.progress,
                     output = self.output
                 ))
 
@@ -990,6 +1047,7 @@ class RunItem():
                     'run_idk': self.run_idk,
                     'task_idk': self._task.task_idk,
                     'status': self.status,
+                    'progress': self.progress,
                     'start_time': str(self.start_time),
                     'end_time': str(self.end_time),
                     'output': str(self.output)
@@ -998,17 +1056,28 @@ class RunItem():
             raise Exception(f'Error updating run in database: {e}') from e
 
     def update_active(self):
+        """
+        Updates the last active time for the run to the current time.
+        """
         self.last_active = dt.now()
         self._update_db()
 
     def update(
-            self, status: str, start_time: dt | None ,
-            end_time: dt | None, output: dict | None = None
+            self, status: RunStatus, progress: RunProgress,
+            start_time: dt | None , end_time: dt | None,
+            output: dict | None = None
         ):
+        """
+        Updates the run with the new status, progress, start time, end time and output.
+        - Note: This reloads the run from the database before updating to minimise
+        the chance of overwriting changes from other processes however this is not guaranteed
+        to be version-safe. Future updates may include version-safe updates.
+        """
         # Before doing any changes, reload the run from the database
         # to make sure we're not overwriting changes from other processes
         self.reload()
         self.status = status
+        self.progress = progress
         self.start_time = start_time
         self.end_time = end_time
         self.output = output
@@ -1020,6 +1089,7 @@ class RunItem():
             needs_update = True
         elif(
             db_data.status != self.status or
+            db_data.progress != self.progress or
             db_data.start_time != self.start_time or
             db_data.end_time != self.end_time or
             db_data.output != self.output
@@ -1029,159 +1099,131 @@ class RunItem():
         if needs_update:
             self._update_db()
 
-    def set_running(self, output: dict | None = None):
+    def set_status(
+            self,
+            status: RunStatus,
+            output: dict | None = None,
+            merge_output = True,
+            send_alert = True,
+            allow_backwards = False,
+            raise_on_backwards = True
+        ):
         """
-        Sets the run as running and sets the start time.
-        Merges the output with any existing output.
+        This sets the status of a run and neither updates the start or end time
+        as these are set by the progress functions.
+        #### Parameters:
+        - status: The new status of the run
+        - output: The output for the run
+        - merge_output: If True, the output will be merged with any existing output
+        - send_alert: If True, an alert will be sent for any status that has alerts
+        - allow_backwards: If True, the status can be set to a lower status than
+            the current status. Default is False.
+        - raise_on_backwards: If True, an exception will be raised if the status
+            is set to a lower status than the current status. Default is True.
+            Note: This is only used if allow_backwards is False.
+
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
-        # NOTE: The default output is shared across all calls
-        # so we need to copy it here to avoid modifying the default
-        # and contaminating output across all runs
-        # Copy the output so we don't modify the input
-        new_output = copy.deepcopy(output) if output else {}
-        if db_item is not None:
-            if db_item.status == RunStatus.RUNNING:
-                # if it's already set, we don't
-                # want to update it again
-                return
-            if db_item.status != RunStatus.QUEUED:
-                raise Exception('Run status is not queued, cannot set to running')
-            if db_item.output is not None:
-                new_output.update(db_item.output)
-
-        self.update(
-            status = RunStatus.RUNNING,
-            start_time = dt.now(),
-            end_time = None,
-            output = new_output
-        )
-
-    def set_success(self, output: dict | None = None):
-        """
-        Sets the run as success and sets the end time.
-        Merges the output with any existing output.
-        This will not overwrite an existing FAILED or WARN state, and
-        effectively only go from QUEUED or RUNNING to SUCCESS.
-        """
-        db_item = RunItem.get(self.run_idk, task=self._task)
+        if not db_item:
+            raise Exception('set_status failed, run not found')
         # See set_running for why we copy the output
         new_output = copy.deepcopy(output) if output else {}
-        if db_item is not None:
-            if db_item.status == RunStatus.FAILED:
-                # If a run has failed (e.g. timeout) then leave it has failed
-                raise Exception('Run status set to failed, cannot set to success')
-            elif db_item.status == RunStatus.WARN:
-                # If a run has a warning then leave it as a warning
-                raise Exception('Run status set to warn, cannot set to success')
-            elif db_item.status == RunStatus.SUCCESS:
-                # if it's already set, we don't
-                # want to update it again
-                return
+        status_order = [
+            RunStatusEnum.unstarted.value,
+            RunStatusEnum.pending.value,
+            RunStatusEnum.success.value,
+            RunStatusEnum.warn.value,
+            RunStatusEnum.cancelled.value,
+            RunStatusEnum.failed.value
+        ]
+        # make sure we do the correct 'go backwards' behaviour
+        backwards_change = status_order.index(status) < status_order.index(db_item.status)
+        if not allow_backwards and backwards_change:
+            if raise_on_backwards:
+                raise Exception(f'Cannot set status to {status} from {db_item.status}')
+            return
 
-            if db_item.output is not None:
-                new_output.update(db_item.output)
+        if db_item.status == status:
+            # if it's already set, we don't
+            # want to update it again
+            return
+
+        if db_item.output is not None and merge_output:
+            new_output.update(db_item.output)
+
+        if send_alert:
+            if status == RunStatusEnum.failed.value:
+                Producer().send_message(
+                    channel=MqueueChannels.run_failed,
+                    message=MqueueChannels.run_failed.message_type(
+                        task_id=self.task_idf,
+                        run_id=self.run_idk
+                    )
+                )
 
         self.update(
-            status = RunStatus.SUCCESS,
-            start_time = self.start_time,
-            end_time = dt.now(),
+            status = status,
+            progress=db_item.progress,
+            start_time = db_item.start_time,
+            end_time = db_item.end_time,
             output = new_output
         )
 
-    def set_warn(self, output: dict | None = None):
+    def set_progress(
+            self,
+            progress: RunProgress,
+            output: dict | None = None,
+            merge_output = True,
+            zero_duration = False
+        ):
         """
-        Sets the run as a warning and sets the end time.
-        Merges the output with any existing output.
-        This will not overwrite an existing FAILED state.
+        This sets the progress of a run and updates the last active time.
         """
         db_item = RunItem.get(self.run_idk, task=self._task)
+        if not db_item:
+            raise Exception('set_progress failed, run not found')
         # See set_running for why we copy the output
+
+        progress_order = [
+            RunProgressEnum.queued.value,
+            RunProgressEnum.running.value,
+            RunProgressEnum.complete.value
+        ]
+
         new_output = copy.deepcopy(output) if output else {}
-        if db_item is not None:
-            if db_item.status == RunStatus.FAILED:
-                # If a run has failed (e.g. timeout) then leave it has failed
-                raise Exception('Run status set to failed, cannot set to warn')
-            elif db_item.status == RunStatus.WARN:
-                # if it's already set, we don't
-                # want to update it again
-                return
-            if db_item.output is not None:
-                new_output.update(db_item.output)
+        if db_item.progress == progress:
+            # if it's already set, we don't
+            # want to update it again
+            return
+
+        if progress_order.index(progress) < progress_order.index(db_item.progress):
+            raise Exception(f'Cannot set progress to {progress} from {db_item.progress}')
+
+        if db_item.output is not None and merge_output:
+            new_output.update(db_item.output)
+
+        if progress == RunProgressEnum.running.value:
+            start_time = dt.now()
+            end_time = None
+        elif progress == RunProgressEnum.complete.value:
+            start_time = db_item.start_time
+            if zero_duration:
+                end_time = db_item.start_time
+            else:
+                end_time = dt.now()
+            start_time = db_item.start_time
+        elif progress == RunProgressEnum.queued.value:
+            start_time = None
+            end_time = None
 
         self.update(
-            status = RunStatus.WARN,
-            start_time = self.start_time,
-            end_time = dt.now(),
+            status = db_item.status,
+            progress = progress,
+            start_time = start_time,
+            end_time = end_time,
             output = new_output
         )
 
-    def set_failed(self, output: dict | None = None, zero_duration = False):
-        """
-        Sets the run as failed and sets the end time.
-        Merges the output with any existing output.
-        Optionally can fail the run with a zero duration, useful when
-        failing historical runs as we don't know when they actually stopped.
-        """
-        db_item = RunItem.get(self.run_idk, task=self._task)
-        # See set_running for why we copy the output
-        new_output = copy.deepcopy(output) if output else {}
-        if db_item is not None:
-            if db_item.status == RunStatus.CANCELLED:
-                # If a run has been cancelled then leave it as cancelled
-                return
-            if db_item.status == RunStatus.FAILED:
-                # if it's already set, we don't
-                # want to update it again
-                return
-            if db_item.output is not None:
-                new_output.update(db_item.output)
-
-        failed_time = dt.now()
-        if zero_duration:
-            failed_time = self.start_time
-
-        self.update(
-            status = RunStatus.FAILED,
-            start_time = self.start_time,
-            end_time = failed_time,
-            output = new_output
-        )
-        Producer().send_message(
-            channel=MqueueChannels.run_failed,
-            message=MqueueChannels.run_failed.message_type(
-                task_id=self.task_idf,
-                run_id=self.run_idk
-            )
-        )
-
-    def set_cancelled(self, output: dict | None = None, zero_duration = False):
-        """
-        Sets the run as cancelled and sets the end time.
-        Merges the output with any existing output.
-        """
-        db_item = RunItem.get(self.run_idk, task=self._task)
-        # See set_running for why we copy the output
-        new_output = copy.deepcopy(output) if output else {}
-        if db_item is not None:
-            if db_item.status == RunStatus.CANCELLED:
-                # if it's already set, we don't
-                # want to update it again
-                return
-            if db_item.output is not None:
-                new_output.update(db_item.output)
-
-
-        cancelled_time = dt.now()
-        if zero_duration:
-            cancelled_time = self.start_time
-
-        self.update(
-            status = RunStatus.CANCELLED,
-            start_time = self.start_time,
-            end_time = cancelled_time,
-            output = new_output
-        )
 
     def set_output(self, output: dict | None, merge = False):
         """
@@ -1203,6 +1245,7 @@ class RunItem():
 
         self.update(
             status = db_item.status,
+            progress=db_item.progress,
             start_time = db_item.start_time,
             end_time = db_item.end_time,
             output = new_output
@@ -1246,14 +1289,12 @@ class FailedRunsMonitor(TaskMonitorBase):
     'too many times' to avoid spamming alerts. The recipient of the
     alert is expected to check the task.
     """
-    alert_on = RunStatus.FAILED
-    failure_count = 1
 
     def __init__(
             self,
             monitor_Name: str,
             alert: AlertBase,
-            failure_count: int = 1
+            disable_after_count = 5,
         ):
         super().__init__(
             monitor_name=monitor_Name,
@@ -1262,8 +1303,8 @@ class FailedRunsMonitor(TaskMonitorBase):
             check_function=self.check
         )
         self.alert = alert
-        self.alert_on = RunStatus.FAILED
-        self.failure_count = failure_count
+        self.alert_on = RunStatusEnum.failed.value
+        self.disable_after_count = disable_after_count
 
     def _run_to_ui_url(self, run: RunItem) -> str:
         if monitors.MONITOR_CONFIG and monitors.MONITOR_CONFIG.orcha_ui_base_url:
@@ -1300,18 +1341,27 @@ class FailedRunsMonitor(TaskMonitorBase):
         # Check for 5 out of 7 runs to have failed,
         # this is to avoid spamming alerts if 4 fail, 1 succeeds
         # then 4 more fail, etc.
-        runs = task.get_latest_runs(None, 7)
+        runs = task.get_latest_runs(None, 10)
         fail_count = 0
         for r in runs:
             if r.status == self.alert_on:
                 fail_count += 1
-        if fail_count >= 5:
-            # If we have 'too many failures' then stop sending
-            # alerts until we've had some successful runs again
-            # to avoid spamming too many alerts and getting negative
-            # email/domain reputation
-            return
-        if fail_count >= self.failure_count:
+
+        if fail_count >= self.disable_after_count:
+            task.set_status('error', f'Task disabled after {fail_count} consecutive failures')
+            if self.alert.output_type == AlertOutputType.HTML:
+                message_string = f'''
+                    <b>Task {self._task_to_ui_url(task)} has multiple failures and has been disabled</b>
+                    <br>
+                    <br><b>Run ID</b>
+                    <br>{self._run_to_ui_url(run)}
+                '''
+            else:
+                message_string = f'''
+                    Task {task.name} has multiple failures and has been disabled
+                    Run ID: {run.run_idk}
+                '''
+        else:
             times_str = 'time' if fail_count == 1 else 'times'
             if self.alert.output_type == AlertOutputType.HTML:
                 output_str = json.dumps(run.output, indent=4)
@@ -1325,11 +1375,11 @@ class FailedRunsMonitor(TaskMonitorBase):
                     <br><b>Run Output:</b>
                     <pre>{output_str}</pre>
                 '''
-                self.alert.send_alert(message=message_string)
             else:
                 message_string = f'''
                     Task {task.name} has failed {fail_count} {times_str}
                     Run ID: {run.run_idk}
                     Run Output: {json.dumps(run.output)}
                 '''
-                self.alert.send_alert(message=message_string)
+
+        self.alert.send_alert(message=message_string)

@@ -102,13 +102,9 @@ class ThreadHandler():
                     run.update_active()
                     self.update_active_all_tasks()
                     run.reload()
-                    # TODO: Review later if this check is required
-                    # as set_running should be called before this point
-                    if run.status == tasks.RunStatus.QUEUED:
-                        run.set_running()
                     # If the run has been cancelled then we need to stop the thread
-                    if run.status == tasks.RunStatus.CANCELLED:
-                        orcha_threading.expire_timeout_remainder(
+                    if run.status == 'cancelled':
+                        orcha_threading.expire_timeout(
                             threading.current_thread().name
                         )
                     time.sleep(15)
@@ -144,13 +140,14 @@ class ThreadHandler():
             # Set the run as started so when we update the active time it
             # has the version that has already started otherwise it will
             # set the active time on the unstarted version of the run
-            run.set_running()
+            run.set_status('pending')
+            run.set_progress('running')
             # Run the function with the config provided in the run itself
             # this is to allow for manual runs to have different configs
             try:
                 task.task_function(task, run, run.config)
             except Exception as e:
-                orcha_threading.run_function_store_exception(e)
+                orcha_threading.store_exception(e)
             # When complete, also update run times
             _update_run_times(run)
             # if any of the current_run_times have a retry_count > 0 then set status as WARN
@@ -161,33 +158,50 @@ class ThreadHandler():
                         # Only set it as a warning if it hasn't failed already
                         # and explicitly set the retry_message not message to avoid overwriting
                         # any other failed messages
-                        if run.status == tasks.RunStatus.FAILED:
+                        if run.status == 'failed':
                             run.set_output({'retry_message': message}, merge=True)
                         else:
-                            run.set_warn({'message': message})
-                        return
+                            run.set_status(status='warn', output={'message': message})
+
             # only if it's still running do we want to set it as success,
             # otherwise it's already been set as failed, warn, etc and
             # we need to leave it in that state
-            thread_exception = orcha_threading.run_function_get_exception(
+            thread_exception = orcha_threading.get_exception(
                 threading.current_thread(),
-                clear_exception=False
+                and_clear_exception=False
             )
-            # If we had an exception then we don't want to set it as a success here
-            if run.status == tasks.RunStatus.RUNNING and not thread_exception:
-                run_s_set = task.get_schedule_from_id(run.set_idf)
-                # Check if we have any trigger tasks to run
-                if run_s_set and run_s_set.trigger_task:
-                    trigger_task = run_s_set.trigger_task[0]
-                    trigger_task_sset = run_s_set.trigger_task[1]
-                    if not trigger_task_sset:
-                        trigger_task_sset = trigger_task.schedule_sets[0]
-                    trigger_task.trigger_run(
-                        schedule=trigger_task_sset,
-                        trigger_task=task,
-                        scheduled_time=run.scheduled_time
-                    )
-                run.set_success()
+            # If we had an exception in the thread then raise it
+            if thread_exception:
+                raise thread_exception
+
+            # At this point we have to be running, if not then we have an issue
+            if run.progress == 'running':
+                # if nothing else has set the status then we can set it as success
+                if run.status == 'pending':
+                    run_s_set = task.get_schedule_from_id(run.set_idf)
+                    # Check if we have any trigger tasks to run
+                    if run_s_set and run_s_set.trigger_task:
+                        trigger_task = run_s_set.trigger_task[0]
+                        trigger_task_sset = run_s_set.trigger_task[1]
+                        if not trigger_task_sset:
+                            trigger_task_sset = trigger_task.schedule_sets[0]
+                        new_run = trigger_task.trigger_run(
+                            schedule=trigger_task_sset,
+                            trigger_task=task,
+                            scheduled_time=run.scheduled_time
+                        )
+                        if not new_run:
+                            run.set_status('warn')
+                            run.set_output({'message':'Trigger task failed to create run'})
+                    # The trigger task may have set the run as warn, which is ok
+                    # and we can have the 'set success' call to quietly do nothing
+                    run.set_status('success', raise_on_backwards=False)
+            else:
+                raise Exception(f'Run {run.run_idk} complete but not set run as running')
+
+            # Once all updates are done, the run is complete
+            run.set_progress('complete')
+
 
         # Because we have multiple schedules for a task we need
         # to get all the runs that are queued and run them because
@@ -224,9 +238,11 @@ class ThreadHandler():
                     _run_wrapper(run)
                 running_dict[run.run_idk] = False
             except Exception as e:
-                run.set_failed(output={
-                    'exception':f'{str(e)}, \n' + f'{traceback.format_exc()}'
-                })
+                run.set_status(
+                    status='failed',
+                    output={'exception':f'{str(e)}, \n' + f'{traceback.format_exc()}'}
+                )
+                run.set_progress('complete')
                 # if we have an exception the active time thread then just remove
                 # the run from the running dict and let the active timer thread
                 # catch the KeyError and stop itself

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from orcha.core import monitors
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
-from orcha.core.tasks import RunStatus, TaskItem
+from orcha.core.tasks import TaskItem
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
@@ -281,7 +281,8 @@ class OrchaSchedulerConfig:
         - prune_logs_max_age(td | None = 180): The maximum age of logs to keep in the database. If None, then no logs will be pruned.
         - prune_interval(float = 3600): The interval in seconds at which the scheduler will prune the runs and logs.
         - fail_historical_runs(bool = True): If True, fail any unstarted/incomplete runs that are older than fail_historical_age.
-        - fail_historical_interval(float = 43200): The interval in seconds at which the scheduler will check.
+        - fail_historical_age(td | None = 6): The age in hours when an unstarted run should be failed.
+        - fail_historical_interval(float = 180): The interval in seconds at which the scheduler will check.
         """
         task_refresh_interval: float = 60
         fail_unstarted_runs: bool = True
@@ -290,8 +291,8 @@ class OrchaSchedulerConfig:
         prune_logs_max_age: td | None = td(days=180)
         prune_interval: float = 3600
         fail_historical_runs: bool = True
-        fail_historical_age: td | None = td(hours=24)
-        fail_historical_interval: float = 3600
+        fail_historical_age: td | None = td(hours=6)
+        fail_historical_interval: float = 180
 
 
 class Scheduler:
@@ -522,11 +523,16 @@ class Scheduler:
                 for run in open_runs:
                     run_age = dt.now() - run.scheduled_time
                     if run_age > self.fail_historical_age:
-                        run.set_failed(
+                        run.set_status(
+                            status='failed',
                             output={
                                 'message': 'Historical run failed to start/finish'
                             },
-                            zero_duration=True
+                            send_alert=False
+                        )
+                        run.set_progress(
+                            progress='complete',
+                            zero_duration=True,
                         )
                         Producer().send_message(
                             channel=MqueueChannels.historical_run,
@@ -537,16 +543,20 @@ class Scheduler:
                                 note='Historical run failed to start/finish'
                             )
                         )
-
                         historical_count += 1
-                    if run.status == RunStatus.RUNNING:
+                    elif run.progress == 'running':
                         if run.last_active is not None:
                             if run.last_active < dt.now() - td(minutes=5):
-                                run.set_failed(
+                                run.set_status(
+                                    status='failed',
                                     output={
                                         'message': 'Run has been inactive for over 5 minutes'
                                     },
-                                    zero_duration=True
+                                    send_alert=False
+                                )
+                                run.set_progress(
+                                    progress='complete',
+                                    zero_duration=True,
                                 )
                                 Producer().send_message(
                                     channel=MqueueChannels.historical_run,
@@ -594,32 +604,15 @@ class Scheduler:
                 self.all_tasks = TaskItem.get_all()
 
             for task in self.all_tasks:
+                # Only check enabled tasks (e.g. no disabled/inactive tasks)
+                if task.status != 'enabled':
+                    continue
                 for schedule in task.schedule_sets:
-                    # Only check enabled tasks (e.g. no disabled/inactive tasks)
-                    if task.status != 'enabled':
-                        continue
                     is_due, last_run =  task.is_run_due_with_last(schedule)
                     if is_due:
                         # TODO Check for old queued/running runs and set them to failed
-                        if self.fail_unstarted_runs and last_run is not None:
-                            # No longer failing runs that are queued and relying on
-                            # the historical run failure and allow task runners to clear any backlog
-                            if last_run.status == RunStatus.RUNNING and last_run.last_active is not None:
-                                if last_run.last_active < dt.now() - td(minutes=5):
-                                    last_run.set_failed(
-                                        output={
-                                            'message': 'Run has been inactive for over 5 minutes'
-                                        }
-                                    )
-                                    Producer().send_message(
-                                        channel=MqueueChannels.historical_run,
-                                        message=MqueueChannels.historical_run.message_type(
-                                            scheduler_id=self.scheduler_idk,
-                                            task_id=task.task_idk,
-                                            run_id=last_run.run_idk,
-                                            note='Run has been inactive for over 5 minutes'
-                                        )
-                                    )
+                        # No longer failing runs that are queued and relying on
+                        # the historical run failure to do the work
                         if self.disable_stale_tasks and last_run is not None:
                             # If the task hasn't been active since the last run,
                             # then it's stale and should be disabled.
