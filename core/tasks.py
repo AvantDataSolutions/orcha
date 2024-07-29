@@ -1135,7 +1135,6 @@ class RunItem():
                 values_changed += f' output: {str(current_output)} -> {str(self.output)}'
 
             if values_changed == '':
-                print('Retry failed update with no changes: ', self.run_idk)
                 self.update(
                     status = status,
                     progress = progress,
@@ -1144,9 +1143,6 @@ class RunItem():
                     output = output
                 )
             else:
-                print('Retry failed update: ', self.run_idk)
-                print('   attempted changes:', change_log)
-                print('   blocking changes:', values_changed)
                 tasks_log.add_entry(
                     actor='tasks',
                     category='database',
