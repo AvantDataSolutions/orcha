@@ -284,7 +284,7 @@ class OrchaSchedulerConfig:
         - fail_historical_age(td | None = 6): The age in hours when an unstarted run should be failed.
         - fail_historical_interval(float = 180): The interval in seconds at which the scheduler will check.
         """
-        task_refresh_interval: float = 60
+        task_refresh_interval: float = 30
         fail_unstarted_runs: bool = True
         disable_stale_tasks: bool = True
         prune_runs_max_age: td | None = td(days=180)
@@ -608,7 +608,7 @@ class Scheduler:
                 if task.status != 'enabled':
                     continue
                 for schedule in task.schedule_sets:
-                    is_due, last_run =  task.is_run_due_with_last(schedule)
+                    is_due, last_run = task.is_run_due_with_last(schedule)
                     if is_due:
                         # TODO Check for old queued/running runs and set them to failed
                         # No longer failing runs that are queued and relying on
