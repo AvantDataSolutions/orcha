@@ -101,7 +101,6 @@ class ThreadHandler():
                     _update_run_times(run)
                     run.update_active()
                     self.update_active_all_tasks()
-                    run.reload()
                     # If the run has been cancelled then we need to stop the thread
                     if run.status == 'cancelled':
                         orcha_threading.expire_timeout(
@@ -142,6 +141,8 @@ class ThreadHandler():
             # set the active time on the unstarted version of the run
             run.set_status('pending')
             run.set_progress('running')
+            # TODO Review this - microsleep to allow the run to be set as running
+            time.sleep(1)
             # Run the function with the config provided in the run itself
             # this is to allow for manual runs to have different configs
             try:
@@ -192,7 +193,10 @@ class ThreadHandler():
                         )
                         if not new_run:
                             run.set_status('warn')
-                            run.set_output({'message':'Trigger task failed to create run'})
+                            run.set_output(
+                                {'message':'Trigger task failed to create run'},
+                                merge=True
+                            )
                     # The trigger task may have set the run as warn, which is ok
                     # and we can have the 'set success' call to quietly do nothing
                     run.set_status('success', raise_on_backwards=False)

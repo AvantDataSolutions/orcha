@@ -32,6 +32,9 @@ print('Loading:',__name__)
 
 tasks_log = LogManager('tasks')
 
+class VersionMismatchException(Exception):
+    pass
+
 class MqueueChannels():
 
     class _RunFailedMessage:
@@ -117,7 +120,7 @@ def _setup_sqlalchemy(
     class RunRecord(Base):
         __tablename__ = 'runs'
 
-        # updated = Column(DateTime(timezone=False))
+        update_timestamp = Column(DateTime(timezone=False))
         run_idk = Column(String, primary_key=True)
         task_idf = Column(String)
         set_idf = Column(String)
@@ -702,7 +705,7 @@ The types of runs that can be created.
 @dataclass
 class RunItem():
     _task: TaskItem
-    # TODO updated: dt
+    update_timestamp: dt
     run_idk: str
     task_idf: str
     set_idf: str
@@ -766,6 +769,7 @@ class RunItem():
             raise Exception('Task not found for run')
         return RunItem(
             _task = task,
+            update_timestamp = record.update_timestamp, # type: ignore
             run_idk = record.run_idk, # type: ignore
             task_idf = record.task_idf, # type: ignore
             set_idf = record.set_idf, # type: ignore
@@ -792,15 +796,13 @@ class RunItem():
         """
         confirm_initialised()
 
-        run_idk = str(uuid4())
-
         if schedule.set_idk is None:
             raise Exception('Schedule set idk not set')
 
         item = RunItem(
             _task = task,
-            # TODO updated = dt.now(),
-            run_idk = run_idk,
+            update_timestamp = dt.now(),
+            run_idk = str(uuid4()),
             task_idf = task.task_idk,
             set_idf = schedule.set_idk,
             run_type = run_type,
@@ -810,11 +812,11 @@ class RunItem():
             last_active = None,
             config = schedule.config,
             status = 'unstarted',
-            progress='queued',
+            progress = 'queued',
             output = None
         )
 
-        item._update_db()
+        item._update_db(ignore_updated_check=True)
         return item
 
     @staticmethod
@@ -975,7 +977,7 @@ class RunItem():
                 WHERE run_idk = :run_idk
             '''), {'run_idk': self.run_idk})
 
-    def _update_db(self):
+    def _update_db(self, ignore_updated_check: bool = False):
         try:
             with s_maker.begin() as session:
                 # TODO potential code for detecting concurrent updates
@@ -983,60 +985,51 @@ class RunItem():
                 # update the run in the database if updated == updated
                 # to prevent overwriting changes from other processes
                 # and then update the updated time to the current time
-                # updated_time = dt.now()
-                # updated_rows = session.execute(sql('''
-                #     UPDATE orcha.runs
-                #     SET
-                #         updated = :updated,
-                #         task_idf = :task_idf,
-                #         set_idf = :set_idf,
-                #         run_type = :run_type,
-                #         scheduled_time = :scheduled_time,
-                #         start_time = :start_time,
-                #         end_time = :end_time,
-                #         last_active = :last_active,
-                #         config = :config,
-                #         status = :status,
-                #         output = :output
-                #     WHERE
-                #         run_idk = :run_idk
-                #         AND (updated = :updated OR :ignore_updated_check)
-                #     RETURNING *
-                # '''), {
-                #     'updated': updated_time,
-                #     'run_idk': self.run_idk,
-                #     'task_idf': self._task.task_idk,
-                #     'set_idf': self.set_idf,
-                #     'run_type': self.run_type,
-                #     'scheduled_time': self.scheduled_time,
-                #     'start_time': self.start_time,
-                #     'end_time': self.end_time,
-                #     'last_active': self.last_active,
-                #     'config': self.config,
-                #     'status': self.status,
-                #     'output': self.output,
-                #     'ignore_updated_check': ignore_updated_check
-                # })
-                session.merge(RunRecord(
-                    run_idk = self.run_idk,
-                    task_idf = self._task.task_idk,
-                    set_idf = self.set_idf,
-                    run_type = self.run_type,
-                    scheduled_time = self.scheduled_time,
-                    start_time = self.start_time,
-                    end_time = self.end_time,
-                    last_active = self.last_active,
-                    config = self.config,
-                    status = self.status,
-                    progress = self.progress,
-                    output = self.output
-                ))
+                update_dt = dt.now()
+                updated_rows = session.execute(sql('''
+                    INSERT INTO orcha.runs (
+                        run_idk, update_timestamp, task_idf, set_idf, run_type, scheduled_time,
+                        start_time, end_time, last_active, config, status, progress, output
+                    ) VALUES (
+                        :run_idk, :update_timestamp, :task_idf, :set_idf, :run_type, :scheduled_time,
+                        :start_time, :end_time, :last_active, :config, :status, :progress, :output
+                    )
+                    ON CONFLICT (run_idk) DO UPDATE SET
+                        update_timestamp = EXCLUDED.update_timestamp,
+                        task_idf = EXCLUDED.task_idf,
+                        set_idf = EXCLUDED.set_idf,
+                        run_type = EXCLUDED.run_type,
+                        scheduled_time = EXCLUDED.scheduled_time,
+                        start_time = EXCLUDED.start_time,
+                        end_time = EXCLUDED.end_time,
+                        last_active = EXCLUDED.last_active,
+                        config = EXCLUDED.config,
+                        status = EXCLUDED.status,
+                        progress = EXCLUDED.progress,
+                        output = EXCLUDED.output
+                    WHERE orcha.runs.update_timestamp = :last_updated OR :ignore_updated_check
+                    RETURNING *
+                '''), {
+                    'update_timestamp': update_dt,
+                    'last_updated': self.update_timestamp,
+                    'run_idk': self.run_idk,
+                    'task_idf': self._task.task_idk,
+                    'set_idf': self.set_idf,
+                    'run_type': self.run_type,
+                    'scheduled_time': self.scheduled_time,
+                    'start_time': self.start_time,
+                    'end_time': self.end_time,
+                    'last_active': self.last_active,
+                    'config': json.dumps(self.config) if self.config is not None else None,
+                    'status': self.status,
+                    'progress': self.progress,
+                    'output': json.dumps(self.output) if self.output is not None else None,
+                    'ignore_updated_check': ignore_updated_check
+                })
 
-                # TODO potential code for detecting concurrent updates
-                # if len(updated_rows.all()) == 0:
-                #     return False
-                # self.updated = updated_time
-                # return True
+                if len(updated_rows.all()) == 0:
+                    raise VersionMismatchException('Run update using mismatched versions')
+                self.updated = update_dt
         except Exception as e:
             tasks_log.add_entry(
                 actor='tasks',
@@ -1053,14 +1046,29 @@ class RunItem():
                     'output': str(self.output)
                 }
             )
-            raise Exception(f'Error updating run in database: {e}') from e
+            if isinstance(e, VersionMismatchException):
+                raise e
+            else:
+                raise Exception(f'Error updating run in database: {e}') from e
 
     def update_active(self):
         """
         Updates the last active time for the run to the current time.
         """
+        # We're directly updating the database here as all that is being
+        # updated is the last_active time which is purely a change to this
+        # one column and nothing else; don't need to reload the run as
+        # we don't care if we 'roll back' a last_active time every now and then
         self.last_active = dt.now()
-        self._update_db()
+        with s_maker.begin() as session:
+            session.execute(sql('''
+                UPDATE orcha.runs
+                SET last_active = :last_active
+                WHERE run_idk = :run_idk
+            '''), {
+                'last_active': self.last_active,
+                'run_idk': self.run_idk
+            })
 
     def update(
             self, status: RunStatus, progress: RunProgress,
@@ -1073,31 +1081,89 @@ class RunItem():
         the chance of overwriting changes from other processes however this is not guaranteed
         to be version-safe. Future updates may include version-safe updates.
         """
-        # Before doing any changes, reload the run from the database
-        # to make sure we're not overwriting changes from other processes
-        self.reload()
-        self.status = status
-        self.progress = progress
-        self.start_time = start_time
-        self.end_time = end_time
-        self.output = output
+        # # Before doing any changes, reload the run from the database
+        # # to make sure we're not overwriting changes from other processes
+        current_status = self.status
+        current_progress = self.progress
+        current_start_time = self.start_time
+        current_end_time = self.end_time
+        current_output = self.output
+        change_log = ''
+        if changing_status := self.status != status:
+            change_log += f' status: {self.status} -> {status}'
+            self.status = status
+        if changing_progress := self.progress != progress:
+            change_log += f' progress: {self.progress} -> {progress}'
+            self.progress = progress
+        if changing_start_time := self.start_time != start_time:
+            change_log += f' start_time: {self.start_time} -> {start_time}'
+            self.start_time = start_time
+        if changing_end_time := self.end_time != end_time:
+            change_log += f' end_time: {self.end_time} -> {end_time}'
+            self.end_time = end_time
+        if changing_output := self.output != output:
+            change_log += f' output: {str(self.output)} -> {str(output)}'
+            self.output = output
 
-        db_data = RunItem.get(self.run_idk, task=self._task)
+        needs_update = (
+            changing_status or
+            changing_progress or
+            changing_start_time or
+            changing_end_time or
+            changing_output
+        )
 
-        needs_update = False
-        if db_data is None:
-            needs_update = True
-        elif(
-            db_data.status != self.status or
-            db_data.progress != self.progress or
-            db_data.start_time != self.start_time or
-            db_data.end_time != self.end_time or
-            db_data.output != self.output
-        ):
-            needs_update = True
+        if not needs_update:
+            return
 
-        if needs_update:
+        try:
             self._update_db()
+        except VersionMismatchException as e:
+            # if we get a version mismatch, we need to reload the run
+            # and try again
+            self.reload()
+            values_changed = ''
+            if changing_status and current_status != self.status:
+                values_changed += f' status: {current_status} -> {self.status}'
+            if changing_progress and current_progress != self.progress:
+                values_changed += f' progress: {current_progress} -> {self.progress}'
+            if changing_start_time and current_start_time != self.start_time:
+                values_changed += f' start_time: {current_start_time} -> {self.start_time}'
+            if changing_end_time and current_end_time != self.end_time:
+                values_changed += f' end_time: {current_end_time} -> {self.end_time}'
+            if changing_output and current_output != self.output:
+                values_changed += f' output: {str(current_output)} -> {str(self.output)}'
+
+            if values_changed == '':
+                print('Retry failed update with no changes: ', self.run_idk)
+                self.update(
+                    status = status,
+                    progress = progress,
+                    start_time = start_time,
+                    end_time = end_time,
+                    output = output
+                )
+            else:
+                print('Retry failed update: ', self.run_idk)
+                print('   attempted changes:', change_log)
+                print('   blocking changes:', values_changed)
+                tasks_log.add_entry(
+                    actor='tasks',
+                    category='database',
+                    text='error updating run in database',
+                    json={
+                        'error': 'Version mismatch',
+                        'run_idk': self.run_idk,
+                        'task_idk': self._task.task_idk,
+                        'status': self.status,
+                        'progress': self.progress,
+                        'start_time': str(self.start_time),
+                        'end_time': str(self.end_time),
+                        'output': str(self.output),
+                        'values_changed': values_changed
+                    }
+                )
+                raise e
 
     def set_status(
             self,
@@ -1123,9 +1189,6 @@ class RunItem():
             Note: This is only used if allow_backwards is False.
 
         """
-        db_item = RunItem.get(self.run_idk, task=self._task)
-        if not db_item:
-            raise Exception('set_status failed, run not found')
         # See set_running for why we copy the output
         new_output = copy.deepcopy(output) if output else {}
         status_order = [
@@ -1133,23 +1196,23 @@ class RunItem():
             RunStatusEnum.pending.value,
             RunStatusEnum.success.value,
             RunStatusEnum.warn.value,
-            RunStatusEnum.cancelled.value,
-            RunStatusEnum.failed.value
+            RunStatusEnum.failed.value,
+            RunStatusEnum.cancelled.value
         ]
         # make sure we do the correct 'go backwards' behaviour
-        backwards_change = status_order.index(status) < status_order.index(db_item.status)
+        backwards_change = status_order.index(status) < status_order.index(self.status)
         if not allow_backwards and backwards_change:
             if raise_on_backwards:
-                raise Exception(f'Cannot set status to {status} from {db_item.status}')
+                raise Exception(f'Cannot set status to {status} from {self.status}')
             return
 
-        if db_item.status == status:
+        if self.status == status:
             # if it's already set, we don't
             # want to update it again
             return
 
-        if db_item.output is not None and merge_output:
-            new_output.update(db_item.output)
+        if self.output is not None and merge_output:
+            new_output.update(self.output)
 
         if send_alert:
             if status == RunStatusEnum.failed.value:
@@ -1163,9 +1226,9 @@ class RunItem():
 
         self.update(
             status = status,
-            progress=db_item.progress,
-            start_time = db_item.start_time,
-            end_time = db_item.end_time,
+            progress=self.progress,
+            start_time = self.start_time,
+            end_time = self.end_time,
             output = new_output
         )
 
@@ -1179,10 +1242,7 @@ class RunItem():
         """
         This sets the progress of a run and updates the last active time.
         """
-        db_item = RunItem.get(self.run_idk, task=self._task)
-        if not db_item:
-            raise Exception('set_progress failed, run not found')
-        # See set_running for why we copy the output
+        self.reload()
 
         progress_order = [
             RunProgressEnum.queued.value,
@@ -1191,33 +1251,33 @@ class RunItem():
         ]
 
         new_output = copy.deepcopy(output) if output else {}
-        if db_item.progress == progress:
+        if self.progress == progress:
             # if it's already set, we don't
             # want to update it again
             return
 
-        if progress_order.index(progress) < progress_order.index(db_item.progress):
-            raise Exception(f'Cannot set progress to {progress} from {db_item.progress}')
+        if progress_order.index(progress) < progress_order.index(self.progress):
+            raise Exception(f'Cannot set progress to {progress} from {self.progress}')
 
-        if db_item.output is not None and merge_output:
-            new_output.update(db_item.output)
+        if self.output is not None and merge_output:
+            new_output.update(self.output)
 
         if progress == RunProgressEnum.running.value:
             start_time = dt.now()
             end_time = None
         elif progress == RunProgressEnum.complete.value:
-            start_time = db_item.start_time
+            start_time = self.start_time
             if zero_duration:
-                end_time = db_item.start_time
+                end_time = self.start_time
             else:
                 end_time = dt.now()
-            start_time = db_item.start_time
+            start_time = self.start_time
         elif progress == RunProgressEnum.queued.value:
             start_time = None
             end_time = None
 
         self.update(
-            status = db_item.status,
+            status = self.status,
             progress = progress,
             start_time = start_time,
             end_time = end_time,
@@ -1232,24 +1292,34 @@ class RunItem():
         If merge is set to True then the output will be merged with any
         existing output.
         """
-        db_item = RunItem.get(self.run_idk, task=self._task)
-        if db_item is None:
-            raise Exception('update_output failed, run not found')
-        new_output = output
-        if merge:
-            new_output = db_item.output
-            if new_output is None:
-                new_output = {}
-            if output is not None:
+        original_output = copy.deepcopy(self.output)
+        if not merge:
+            new_output = output
+        else:
+            if output is None:
+                # merge + no output = do nothing
+                return
+            elif self.output is None:
+                new_output = output
+            else:
+                new_output = copy.deepcopy(self.output)
                 new_output.update(output)
+        try:
+            self.update(
+                status = self.status,
+                progress=self.progress,
+                start_time = self.start_time,
+                end_time = self.end_time,
+                output = new_output
+            )
+        except VersionMismatchException as e:
+            # if we get a version mismatch, we need to reload the run
+            # and try again, and make sure we're not overwriting changes
+            self.reload()
+            if original_output != self.output:
+                raise e
+            self.set_output(output, merge)
 
-        self.update(
-            status = db_item.status,
-            progress=db_item.progress,
-            start_time = db_item.start_time,
-            end_time = db_item.end_time,
-            output = new_output
-        )
 
 
 """
