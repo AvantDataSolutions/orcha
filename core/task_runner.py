@@ -87,43 +87,37 @@ class ThreadHandler():
         # task never finishes, so we can check for stale active
         # times and deal with it accordingly
         running_dict = {}
-        def _refresh_active(run: RunItem):
+        def _run_progress_helper(run: RunItem):
             """
-            This updates the active time of the run every 15 seconds as
-            well as checking if the run has been cancelled and clearing
-            the timeout_remainders to force-timeout the run.
-            Note: This needs to be run in a separate thread, however with
-            the same thread name as the run itself to allow for the
-            same kvdb store to be the same across the threads.
+            This is a helper function to run in parallel with the run itself
+            and perform non-blocking tasks such as:
+            - Updating the active time of the task
+            - Checking if the run has been cancelled
+            - Updating the run times in the run output
             """
-            try:
-                while running_dict[run.run_idk]:
-                    _update_run_times(run)
-                    run.update_active()
-                    self.update_active_all_tasks()
-                    # If the run has been cancelled then we need to stop the thread
-                    if run.status == 'cancelled':
-                        orcha_threading.expire_timeout(
-                            threading.current_thread().name
-                        )
-                    time.sleep(15)
-                # remove the run from the running dict to avoid
-                # long running threads from taking up memory
-                running_dict.pop(run.run_idk)
-            except KeyError:
-                # just handle any case where something else has removed the run
-                # which means the run has finished/died
-                pass
+            while running_dict.get(run.run_idk, False):
+                # sleep at the start so we will always get 'one last run'
+                # before the loop is broken
+                time.sleep(5)
+                current_run_times = kvdb.get(
+                    key='current_run_times',
+                    as_type=list,
+                    storage_type='local'
+                )
+                if current_run_times is not None and len(current_run_times) > 0:
+                    new_output = {'run_times': current_run_times}
+                    run.set_output(new_output, merge=True)
 
-        def _update_run_times(run: RunItem):
-            current_run_times = kvdb.get(
-                key='current_run_times',
-                as_type=list,
-                storage_type='local'
-            )
-            if current_run_times is not None:
-                new_output = {'run_times': current_run_times}
-                run.set_output(new_output, merge=True)
+                run.update_active()
+                self.update_active_all_tasks()
+                # If the run has been cancelled then we need to stop the thread
+                if run.status == 'cancelled':
+                    orcha_threading.expire_timeout(
+                        threading.current_thread().name
+                    )
+            # remove the run from the running dict to avoid
+            # long running threads from taking up memory
+            running_dict.pop(run.run_idk, None)
 
         def _run_wrapper(run: RunItem):
             """
@@ -141,16 +135,34 @@ class ThreadHandler():
             # set the active time on the unstarted version of the run
             run.set_status('pending')
             run.set_progress('running')
-            # TODO Review this - microsleep to allow the run to be set as running
-            time.sleep(1)
-            # Run the function with the config provided in the run itself
-            # this is to allow for manual runs to have different configs
+
+            running_dict[run.run_idk] = True
+            # We need to allow the _refresh_active function to use the
+            # same store as the run itself to be able to read module
+            # times while the run is in progress and update the output
+            helper_thread = threading.Thread(
+                target=_run_progress_helper,
+                args=(run,),
+                name=threading.current_thread().name
+            )
+            helper_thread.start()
+
+            # We're using the threading exception store to store exceptions
+            # to handle elsewhere
             try:
+                # Run the function with the config provided in the run itself
+                # this is to allow for manual runs to have different configs
                 task.task_function(task, run, run.config)
             except Exception as e:
                 orcha_threading.store_exception(e)
-            # When complete, also update run times
-            _update_run_times(run)
+
+            running_dict[run.run_idk] = False
+            # Join the helper thread to make sure it finishes
+            helper_thread.join()
+
+            # We'll often have version mismatch issues here
+            # as the run has been updated in the helper thread
+            run.reload()
             # if any of the current_run_times have a retry_count > 0 then set status as WARN
             if run.output is not None:
                 for run_time in run.output.get('run_times', []):
@@ -159,7 +171,7 @@ class ThreadHandler():
                         # Only set it as a warning if it hasn't failed already
                         # and explicitly set the retry_message not message to avoid overwriting
                         # any other failed messages
-                        if run.status == 'failed':
+                        if run.status == 'failed' or run.status == 'cancelled':
                             run.set_output({'retry_message': message}, merge=True)
                         else:
                             run.set_status(status='warn', output={'message': message})
@@ -206,7 +218,6 @@ class ThreadHandler():
             # Once all updates are done, the run is complete
             run.set_progress('complete')
 
-
         # Because we have multiple schedules for a task we need
         # to get all the runs that are queued and run them because
         # some schedules will have runs queued at the same time
@@ -217,17 +228,6 @@ class ThreadHandler():
                 json={'task': task.name, 'run_id': run.run_idk}
             )
             try:
-                running_dict[run.run_idk] = True
-                # We need to allow the _refresh_active function to use the
-                # same store as the run itself to be able to read module
-                # times while the run is in progress and update the output
-                ra_thread = threading.Thread(
-                    target=_refresh_active,
-                    args=(run,),
-                    name=threading.current_thread().name
-                )
-                ra_thread.start()
-                # Temporary fix to disable timeouts
                 use_timeouts = True
                 if use_timeouts:
                     timeout = run.config.get('timeout', TaskRunner.task_timeout)
@@ -240,17 +240,19 @@ class ThreadHandler():
                     )
                 else:
                     _run_wrapper(run)
-                running_dict[run.run_idk] = False
             except Exception as e:
+                # Being safe and adding a reload to make sure we have the latest run
+                run.reload()
+                # The run may often be cancelled here so we don't want to raise
+                # if we're going from cancelled to failed; leaving it as cancelled is ok
                 run.set_status(
                     status='failed',
-                    output={'exception':f'{str(e)}, \n' + f'{traceback.format_exc()}'}
+                    output={'exception':f'{str(e)}, \n' + f'{traceback.format_exc()}'},
+                    raise_on_backwards=False
                 )
                 run.set_progress('complete')
-                # if we have an exception the active time thread then just remove
-                # the run from the running dict and let the active timer thread
-                # catch the KeyError and stop itself
-                running_dict.pop(run.run_idk)
+                # if the run raised an exception then clean up the idk from the running_dict
+                running_dict.pop(run.run_idk, None)
                 continue
 
 

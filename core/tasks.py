@@ -1077,89 +1077,81 @@ class RunItem():
         ):
         """
         Updates the run with the new status, progress, start time, end time and output.
-        - Note: This reloads the run from the database before updating to minimise
-        the chance of overwriting changes from other processes however this is not guaranteed
-        to be version-safe. Future updates may include version-safe updates.
         """
-        # # Before doing any changes, reload the run from the database
-        # # to make sure we're not overwriting changes from other processes
-        current_status = self.status
-        current_progress = self.progress
-        current_start_time = self.start_time
-        current_end_time = self.end_time
-        current_output = self.output
-        change_log = ''
-        if changing_status := self.status != status:
-            change_log += f' status: {self.status} -> {status}'
-            self.status = status
-        if changing_progress := self.progress != progress:
-            change_log += f' progress: {self.progress} -> {progress}'
-            self.progress = progress
-        if changing_start_time := self.start_time != start_time:
-            change_log += f' start_time: {self.start_time} -> {start_time}'
-            self.start_time = start_time
-        if changing_end_time := self.end_time != end_time:
-            change_log += f' end_time: {self.end_time} -> {end_time}'
-            self.end_time = end_time
-        if changing_output := self.output != output:
-            change_log += f' output: {str(self.output)} -> {str(output)}'
-            self.output = output
+        # Keep initial values so we can figure out if we can recover
+        # from a version mismatch
+        version_status = self.status
+        version_progress = self.progress
+        version_start_time = self.start_time
+        version_end_time = self.end_time
+        version_output = self.output
 
-        needs_update = (
-            changing_status or
-            changing_progress or
-            changing_start_time or
-            changing_end_time or
-            changing_output
-        )
+        try_count = 0
+        max_tries = 3
+        while try_count < 3:
+            try:
+                # Updating 'self' inside the loop as if we fail, the reload()
+                # will reset 'self' to the database values each time
+                change_log = ''
+                needs_update = False
+                if changing_status := self.status != status:
+                    needs_update = True
+                    change_log += f' status: {self.status} -> {status}'
+                    self.status = status
+                if changing_progress := self.progress != progress:
+                    needs_update = True
+                    change_log += f' progress: {self.progress} -> {progress}'
+                    self.progress = progress
+                if changing_start_time := self.start_time != start_time:
+                    needs_update = True
+                    change_log += f' start_time: {self.start_time} -> {start_time}'
+                    self.start_time = start_time
+                if changing_end_time := self.end_time != end_time:
+                    needs_update = True
+                    change_log += f' end_time: {self.end_time} -> {end_time}'
+                    self.end_time = end_time
+                if changing_output := self.output != output:
+                    needs_update = True
+                    change_log += f' output: {str(self.output)} -> {str(output)}'
+                    self.output = output
 
-        if not needs_update:
-            return
+                if not needs_update:
+                    return
 
-        try:
-            self._update_db()
-        except VersionMismatchException as e:
-            # if we get a version mismatch, we need to reload the run
-            # and try again
-            self.reload()
-            values_changed = ''
-            if changing_status and current_status != self.status:
-                values_changed += f' status: {current_status} -> {self.status}'
-            if changing_progress and current_progress != self.progress:
-                values_changed += f' progress: {current_progress} -> {self.progress}'
-            if changing_start_time and current_start_time != self.start_time:
-                values_changed += f' start_time: {current_start_time} -> {self.start_time}'
-            if changing_end_time and current_end_time != self.end_time:
-                values_changed += f' end_time: {current_end_time} -> {self.end_time}'
-            if changing_output and current_output != self.output:
-                values_changed += f' output: {str(current_output)} -> {str(self.output)}'
+                self._update_db()
+                return
+            except VersionMismatchException as e:
+                # if we get a version mismatch, we need to reload the run
+                # and try again
+                self.reload()
+                values_changed = ''
+                if changing_status and version_status != self.status:
+                    values_changed += f' status current: {version_status} -> {self.status}'
+                if changing_progress and version_progress != self.progress:
+                    values_changed += f' progress: {version_progress} -> {self.progress}'
+                if changing_start_time and version_start_time != self.start_time:
+                    values_changed += f' start_time current: {version_start_time} -> {self.start_time}'
+                if changing_end_time and version_end_time != self.end_time:
+                    values_changed += f' end_time current: {version_end_time} -> {self.end_time}'
+                if changing_output and version_output != self.output:
+                    values_changed += f' output current: {str(version_output)} -> {str(self.output)}'
 
-            if values_changed == '':
-                self.update(
-                    status = status,
-                    progress = progress,
-                    start_time = start_time,
-                    end_time = end_time,
-                    output = output
-                )
-            else:
-                tasks_log.add_entry(
-                    actor='tasks',
-                    category='database',
-                    text='error updating run in database',
-                    json={
-                        'error': 'Version mismatch',
-                        'run_idk': self.run_idk,
-                        'task_idk': self._task.task_idk,
-                        'status': self.status,
-                        'progress': self.progress,
-                        'start_time': str(self.start_time),
-                        'end_time': str(self.end_time),
-                        'output': str(self.output),
-                        'values_changed': values_changed
-                    }
-                )
-                raise e
+                if values_changed == '':
+                    try_count += 1
+
+                if try_count >= max_tries or values_changed != '':
+                    tasks_log.add_entry(
+                        actor='tasks',
+                        category='database',
+                        text='error updating run in database',
+                        json={
+                            'error': 'Version mismatch',
+                            'run_idk': self.run_idk,
+                            'requested_changes': change_log,
+                            'conflicting_changes': values_changed
+                        }
+                    )
+                    raise e
 
     def set_status(
             self,
@@ -1288,7 +1280,10 @@ class RunItem():
         If merge is set to True then the output will be merged with any
         existing output.
         """
-        original_output = copy.deepcopy(self.output)
+        # Updating output can be problematic so we do a reload to make
+        # sure we have the latest data and minimise the chance of having
+        # a version conflict
+        self.reload()
         if not merge:
             new_output = output
         else:
@@ -1300,23 +1295,14 @@ class RunItem():
             else:
                 new_output = copy.deepcopy(self.output)
                 new_output.update(output)
-        try:
-            self.update(
-                status = self.status,
-                progress=self.progress,
-                start_time = self.start_time,
-                end_time = self.end_time,
-                output = new_output
-            )
-        except VersionMismatchException as e:
-            # if we get a version mismatch, we need to reload the run
-            # and try again, and make sure we're not overwriting changes
-            self.reload()
-            if original_output != self.output:
-                raise e
-            self.set_output(output, merge)
 
-
+        self.update(
+            status = self.status,
+            progress=self.progress,
+            start_time = self.start_time,
+            end_time = self.end_time,
+            output = new_output
+        )
 
 """
 ===================================================================
