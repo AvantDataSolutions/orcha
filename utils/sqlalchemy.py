@@ -256,6 +256,12 @@ def sqlalchemy_replace(
         # when converting large dataframes to rows
         for chunk in range(0, len(data), CHUNK_SIZE):
             rows = data.iloc[chunk:chunk+CHUNK_SIZE].to_dict('records')
+            # Bug with pymssql when handling nan values, need to convert them to None
+            # https://stackoverflow.com/questions/52862703/error-while-inserting-records-with-null-values-into-sql-server-using-pymssql
+            for r in rows:
+                for k, v in r.items():
+                    if pd.isna(v) and v is not None:
+                        r[k] = None
             insert_stmt = sqla_insert(table).values(rows)
             db.execute(insert_stmt)
 
