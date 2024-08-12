@@ -823,6 +823,7 @@ class RunItem():
     def get_all(
             task: str | TaskItem,
             since: dt,
+            max_count: int | None = None,
             schedule: ScheduleSet | None = None,
             run_type: RunType | None = None,
             status: RunStatus | None = None,
@@ -830,10 +831,12 @@ class RunItem():
         ) -> list[RunItem]:
         """
         Gets all runs for a task since a particular time (inclusive)
-        for a particular schedule set (optional, None for all runs)
+        for a particular schedule set (optional, None for all runs). Results
+        are sorted by scheduled time descending.
         #### Parameters:
         - task: The task instance or task id for the task
         - since: The time to get runs since
+        - max_count: The maximum number of runs to get
         - schedule: The schedule set to get the runs for, or None for all schedules
         - run_type: The type of run to get the runs for, or None for all types
         - status: The status of the runs to get, or None for all statuses
@@ -864,7 +867,9 @@ class RunItem():
                 if schedule.set_idk is None:
                     raise Exception('set_idk not set: cannot get runs for schedule set without id')
                 filter_sets.append(RunRecord.set_idf == schedule.set_idk)
-            records = session.query(RunRecord).filter(*filter_sets).all()
+            records = session.query(RunRecord).filter(*filter_sets).order_by(
+                RunRecord.scheduled_time.desc()
+            ).limit(max_count).all()
             return [RunItem._from_record(r, task) for r in records]
 
     @staticmethod
