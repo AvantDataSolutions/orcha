@@ -704,20 +704,6 @@ The types of runs that can be created.
 
 @dataclass
 class RunItem():
-    _task: TaskItem
-    update_timestamp: dt
-    run_idk: str
-    task_idf: str
-    set_idf: str
-    run_type: str
-    scheduled_time: dt
-    start_time: dt | None
-    end_time: dt | None
-    last_active: dt | None
-    config: dict
-    status: RunStatus
-    progress: RunProgress
-    output: dict | None = None
     """
         This class manages the run instances for tasks and write data back
         to the database. It also provides functions to get run instances. An
@@ -739,6 +725,20 @@ class RunItem():
         - progress: The progress of the run (queued, running, complete)
         - output: The output of the run which includes all outputs from modules and the task function
     """
+    _task: TaskItem
+    update_timestamp: dt
+    run_idk: str
+    task_idf: str
+    set_idf: str
+    run_type: str
+    scheduled_time: dt
+    start_time: dt | None
+    end_time: dt | None
+    last_active: dt | None
+    config: dict
+    status: RunStatus
+    progress: RunProgress
+    output: dict | None = None
 
     @staticmethod
     def _task_id_populate(task: str | TaskItem) -> TaskItem:
