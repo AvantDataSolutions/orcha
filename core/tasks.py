@@ -1407,17 +1407,17 @@ class FailedRunsMonitor(TaskMonitorBase):
                 fail_count += 1
 
         if fail_count >= self.disable_after_count:
-            task.set_status('error', f'Task disabled after {fail_count} consecutive failures')
+            task.set_status('error', f'Task set as failed after {fail_count} failed runs')
             if self.alert.output_type == AlertOutputType.HTML:
                 message_string = f'''
-                    <b>Task {self._task_to_ui_url(task)} has multiple failures and has been disabled</b>
+                    <b>Task {self._task_to_ui_url(task)} set as failed after {fail_count} failured runs</b>
                     <br>
                     <br><b>Run ID</b>
                     <br>{self._run_to_ui_url(run)}
                 '''
             else:
                 message_string = f'''
-                    Task {task.name} has multiple failures and has been disabled
+                    Task {task.name} set as failed after {fail_count} failed runs.
                     Run ID: {run.run_idk}
                 '''
         else:
