@@ -1202,6 +1202,16 @@ class RunItem():
         if self.output is not None and merge_output:
             new_output.update(self.output)
 
+        self.update(
+            status = status,
+            progress=self.progress,
+            start_time = self.start_time,
+            end_time = self.end_time,
+            output = new_output
+        )
+
+        # Send the message after updating the database
+        # otherwise the monitor won't see the updated status
         if send_alert:
             if status == RunStatusEnum.failed.value:
                 Producer().send_message(
@@ -1211,14 +1221,6 @@ class RunItem():
                         run_id=self.run_idk
                     )
                 )
-
-        self.update(
-            status = status,
-            progress=self.progress,
-            start_time = self.start_time,
-            end_time = self.end_time,
-            output = new_output
-        )
 
     def set_progress(
             self,
