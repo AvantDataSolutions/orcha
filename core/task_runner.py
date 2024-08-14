@@ -61,6 +61,11 @@ class ThreadHandler():
             task.update_active()
 
     def _run(self):
+        """
+        Main helper function for the ThreadHandler to run all tasks.
+        This processes all tasks in the handler every 15 seconds and
+        updates the active time for all tasks before each task is processed.
+        """
         while self.is_running:
             for task in self.tasks:
                 # Update all tasks as active outside of processing the task
