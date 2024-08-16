@@ -67,6 +67,23 @@ class ThreadHandler():
         updates the active time for all tasks before each task is processed.
         """
         while self.is_running:
+            # if an external process has updated the task then we need to reload it
+            # otherwise we may be running an old version of the task which will at
+            # the very least set the active time on the old version of the task
+            all_tasks = TaskItem.get_all()
+            tasks_dict = {task.task_idk: task for task in all_tasks}
+            for task in self.tasks:
+                db_task = tasks_dict.get(task.task_idk, None)
+                if db_task and db_task.version != task.version:
+                    # log that the task is being updated
+                    tasks_log.add_entry(
+                        'task_runner', 'running', 'reloading_task',
+                        json={
+                            'message': 'Detected task version change, reloading task',
+                            'task': task.task_idk
+                        }
+                    )
+                    self.add_task(db_task)
             for task in self.tasks:
                 # Update all tasks as active outside of processing the task
                 # to make sure we get at least one guaranteed update
