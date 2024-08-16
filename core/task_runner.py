@@ -15,7 +15,7 @@ from orcha.utils.log import LogManager
 
 BASE_THREAD_GROUP = 'base_thread'
 
-tasks_log = LogManager('tasks')
+runner_log = LogManager('task_runner')
 
 
 class ThreadHandler():
@@ -76,10 +76,11 @@ class ThreadHandler():
                 db_task = tasks_dict.get(task.task_idk, None)
                 if db_task and db_task.version != task.version:
                     # log that the task is being updated
-                    tasks_log.add_entry(
-                        'task_runner', 'running', 'reloading_task',
+                    runner_log.add_entry(
+                        actor='main_loop', category='reloading_task',
+                        text='Detected task version change, reloading task',
                         json={
-                            'message': 'Detected task version change, reloading task',
+                            'message': '',
                             'task': task.task_idk
                         }
                     )
@@ -100,8 +101,9 @@ class ThreadHandler():
 
     def process_task(self, task: TaskItem):
         # log that the task is running
-        tasks_log.add_entry(
-            'task_runner', 'running', 'processing_task',
+        runner_log.add_entry(
+            actor='main_loop', category='processing_task',
+            text='Processing task',
             json={'task': task.name}
         )
         # Run in a second thread to tick over the active time
@@ -245,8 +247,9 @@ class ThreadHandler():
         # some schedules will have runs queued at the same time
         queued_runs = task.get_queued_runs()
         for run in queued_runs:
-            tasks_log.add_entry(
-                'task_runner', 'running', 'running_task',
+            runner_log.add_entry(
+                actor='main_loop', category='processing_run',
+                text='Processing run',
                 json={'task': task.name, 'run_id': run.run_idk}
             )
             try:
@@ -292,8 +295,8 @@ class TaskRunner():
             use_thread_groups = True,
             default_runner = True
         ):
-        tasks_log.add_entry(
-            'task_runner', 'setup', 'initialising_task_runner',
+        runner_log.add_entry(
+            actor='task_runner', category='setup', text='Setting up task runner',
             json={'run_in_thread': run_in_thread, 'use_thread_groups': use_thread_groups}
         )
         self.run_in_threads = run_in_thread
@@ -320,8 +323,9 @@ class TaskRunner():
             if self.run_in_threads:
                 self.handlers[thread_group].start()
 
-        tasks_log.add_entry(
-            'task_runner', 'setup', 'registering_task',
+        runner_log.add_entry(
+            actor='task_runner', category='registering_task',
+            text='Registering task',
             json={'task': task.name, 'thread_group': thread_group}
         )
 

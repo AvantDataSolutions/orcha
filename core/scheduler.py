@@ -20,7 +20,7 @@ from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
-orcha_log = LogManager('orcha')
+scheduler_log = LogManager('scheduler')
 
 Base: DeclarativeMeta
 engine: Engine
@@ -445,7 +445,9 @@ class Scheduler:
         threads are already running. If the threads are already running, then
         this will do nothing.
         """
-        orcha_log.add_entry('scheduler', 'status', 'Starting', {})
+        scheduler_log.add_entry(
+            actor='scheduler', category='status', text='Starting', json={}
+        )
         self.running_state = RunningState.running
         # Only start threads if they are None (dont exist) or they are no
         # longer alive (have finished/died/stopped)
@@ -470,13 +472,17 @@ class Scheduler:
         return self.thread
 
     def stop(self):
-        orcha_log.add_entry('scheduler', 'status', 'Stopping', {})
+        scheduler_log.add_entry(
+            actor='scheduler', category='status', text='Stopping', json={}
+        )
         self.running_state = RunningState.stopped
         if self.thread is not None:
             self.thread.join()
 
     def pause(self):
-        orcha_log.add_entry('scheduler', 'status', 'Pausing', {})
+        scheduler_log.add_entry(
+            actor='scheduler', category='status', text='Pausing', json={}
+        )
         self.running_state
 
     def _prune_runs_and_logs(self):
@@ -488,17 +494,23 @@ class Scheduler:
             if self.prune_runs_max_age is not None:
                 for task in self.all_tasks:
                     del_count = task.prune_runs(self.prune_runs_max_age)
-                    orcha_log.add_entry('scheduler', 'prune_runs', 'Pruning runs', {
-                        'task_id': task.task_idk,
-                        'max_age': str(self.prune_runs_max_age),
-                        'deleted_count': del_count
-                    })
+                    scheduler_log.add_entry(
+                        actor='scheduler', category='prune_runs', text='Pruning runs',
+                        json={
+                            'task_id': task.task_idk,
+                            'max_age': str(self.prune_runs_max_age),
+                            'deleted_count': del_count
+                        }
+                    )
             if self.prune_logs_max_age is not None:
-                del_count = orcha_log.prune(self.prune_logs_max_age)
-                orcha_log.add_entry('scheduler', 'prune_logs', 'Pruning logs', {
-                    'max_age': str(self.prune_logs_max_age),
-                    'deleted_count': del_count
-                })
+                del_count = scheduler_log.prune(self.prune_logs_max_age)
+                scheduler_log.add_entry(
+                    actor='scheduler', category='prune_logs', text='Pruning logs',
+                    json={
+                        'max_age': str(self.prune_logs_max_age),
+                        'deleted_count': del_count
+                    }
+                )
 
     def _fail_historical(self):
         """
@@ -568,11 +580,15 @@ class Scheduler:
                                     )
                                 )
                                 historical_count += 1
-                orcha_log.add_entry('scheduler', 'fail_historical_runs', 'Failing historical runs', {
-                    'task_id': task.task_idk,
-                    'max_age': str(self.fail_historical_age),
-                    'failed_count': historical_count
-                })
+                scheduler_log.add_entry(
+                    actor='scheduler', category='fail_historical_runs',
+                    text='Failing historical runs',
+                    json={
+                        'task_id': task.task_idk,
+                        'max_age': str(self.fail_historical_age),
+                        'failed_count': historical_count
+                    }
+                )
             # Sleep after each check so on first load it does a check and
             # flush of all 'old' runs
             time.sleep(self.fail_historical_interval)
@@ -583,18 +599,23 @@ class Scheduler:
             # Loop while we're not stopped, but only do stuff if we're running
             if self.running_state == RunningState.running:
                 self.all_tasks = TaskItem.get_all()
-                orcha_log.add_entry('scheduler', 'refresh_tasks', 'Refreshing tasks', {
-                    'task_count': len(self.all_tasks)
-                })
+                scheduler_log.add_entry(
+                    actor='scheduler', category='refresh_tasks',
+                    text='Refreshing tasks',
+                    json={'task_count': len(self.all_tasks)}
+                )
 
     def _process_schedules(self):
         while self.running_state != RunningState.stopped:
             time.sleep(15)
             # log that we're processing schedules and log which tasks
-            orcha_log.add_entry('scheduler', 'status', 'Processing schedules', {
-                'task_count': len(self.all_tasks),
-                'task_names': ', '.join([task.task_idk for task in self.all_tasks])
-            })
+            scheduler_log.add_entry(
+                actor='main_loop', category='status', text='Processing schedules',
+                json={
+                    'task_count': len(self.all_tasks),
+                    'task_names': ', '.join([task.task_idk for task in self.all_tasks])
+                }
+            )
             self.update_active()
             # Loop while we're not stopped, but only do stuff if we're running
             if self.running_state != RunningState.running:

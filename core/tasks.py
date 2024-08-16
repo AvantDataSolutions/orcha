@@ -1037,8 +1037,7 @@ class RunItem():
                 self.updated = update_dt
         except Exception as e:
             tasks_log.add_entry(
-                actor='tasks',
-                category='database',
+                actor='run_item', category='database',
                 text='error updating run in database',
                 json={
                     'error': str(e),
@@ -1146,8 +1145,7 @@ class RunItem():
 
                 if try_count >= max_tries or values_changed != '':
                     tasks_log.add_entry(
-                        actor='tasks',
-                        category='database',
+                        actor='run_item', category='database',
                         text='error updating run in database',
                         json={
                             'error': 'Version mismatch',
