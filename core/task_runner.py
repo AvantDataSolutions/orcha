@@ -84,6 +84,9 @@ class ThreadHandler():
                             'task': task.task_idk
                         }
                     )
+                    # The database task doesn't have the task function itself
+                    # so we need to copy it over from the current task
+                    db_task.task_function = task.task_function
                     self.add_task(db_task)
             for task in self.tasks:
                 # Update all tasks as active outside of processing the task
