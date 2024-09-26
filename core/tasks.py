@@ -440,6 +440,22 @@ class TaskItem():
             task._update_db()
             return task
 
+    def delete_from_db(self) -> None:
+        """
+        Deletes the task from the database. This will not delete the task
+        from the task runner if it is registered.
+        """
+        # Only delete tasks that aren't enabled
+        if self.status == 'enabled':
+            raise Exception('Cannot delete enabled task')
+        with s_maker.begin() as session:
+            # Delete the task and all runs
+            session.execute(sql('''
+                DELETE FROM orcha.tasks
+                WHERE task_idk = :task_idk;
+                DELETE FROM orcha.runs
+                WHERE task_idf = :task_idk;
+            '''), {'task_idk': self.task_idk})
 
     def _update_db(self) -> None:
         with s_maker.begin() as session:
