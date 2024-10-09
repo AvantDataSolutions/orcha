@@ -7,9 +7,29 @@ import inspect
 import json
 import os
 import pkgutil
+import types
 import typing
 
 import markdown
+
+"""
+This script is used to generate the documentation for the Orcha ETL framework.
+
+Usage:
+    python3 -m orcha.docs.docgen
+
+"""
+
+
+def get_signature(obj):
+    """
+    Wrapper around inspect.signature to handle ValueError when the object
+    doesn't have a signature (e.g. a built-in function, Exception, etc.)
+    """
+    try:
+        return inspect.signature(obj)
+    except ValueError:
+        return ''
 
 
 class DocstringToDocs():
@@ -71,7 +91,7 @@ class DocstringToDocs():
         cur_doc_string = class_[1].__doc__
         if full_name in self.override_dict:
             cur_doc_string = self.override_dict[full_name]
-        class_sig_str = str(inspect.signature(class_[1]))
+        class_sig_str = str(get_signature(class_[1]))
         class_extends: list = [f'{b.__module__}.{b.__name__}' for b in class_[1].__bases__]
         class_extends_html = ''
         for b in class_extends:
@@ -84,6 +104,7 @@ class DocstringToDocs():
         class_extends_html = class_extends_html[:-2]
         if cur_doc_string is None or cur_doc_string == class_sig_str:
             cur_doc_string = 'No documenation provided'
+            print(f'No docstring provided for class: {full_name}')
         doc_string_html = self.docstring_to_html(cur_doc_string)
         return f'''
             <h4 id="{full_name}">{html.escape(class_[0])}{class_sig_str}</h4>
@@ -100,14 +121,17 @@ class DocstringToDocs():
 
     def format_method(self, module, class_name, method):
             full_name = f'{method[1].__module__}.{class_name[0]}.{method[0]}'
-            doc = method[1].__doc__
             if full_name in self.override_dict:
-                doc = self.override_dict[full_name]
-            cur_doc_string = doc if doc is not None else 'No documenation provided'
+                cur_doc_string = self.override_dict[full_name]
+            elif method[1].__doc__:
+                cur_doc_string = method[1].__doc__
+            else:
+                cur_doc_string = 'No documenation provided'
+                print(f'No docstring provided for method: {full_name}')
             return self.generate_html_for_class_or_function(
                 name=method[0],
                 full_name=full_name,
-                signature=inspect.signature(method[1]),
+                signature=get_signature(method[1]),
                 doc=cur_doc_string
             )
 
@@ -120,13 +144,17 @@ class DocstringToDocs():
 
     def format_function(self, module, function):
         full_name = f'{function[1].__module__}.{function[0]}'
-        cur_doc_string = function[1].__doc__ if function[1].__doc__ is not None else 'No documenation provided'
         if full_name in self.override_dict:
             cur_doc_string = self.override_dict[full_name]
+        elif function[1].__doc__:
+            cur_doc_string = function[1].__doc__
+        else:
+            cur_doc_string = 'No documenation provided'
+            print(f'No docstring provided for function: {full_name}')
         return self.generate_html_for_class_or_function(
             name=function[0],
             full_name=full_name,
-            signature=inspect.signature(function[1]),
+            signature=get_signature(function[1]),
             doc=cur_doc_string
         )
 
@@ -137,9 +165,13 @@ class DocstringToDocs():
 
     def format_variable(self, module, variable):
         full_name = f'{module.__name__}.{variable[0]}'
-        cur_doc_string = variable[1].__doc__ if variable[1].__doc__ is not None else 'No documenation provided'
         if full_name in self.override_dict:
             cur_doc_string = self.override_dict[full_name]
+        elif variable[1].__doc__:
+            cur_doc_string = variable[1].__doc__
+        else:
+            cur_doc_string = 'No documenation provided'
+            print(f'No docstring provided for variable: {full_name}')
         md = self.docstring_to_html(cur_doc_string)
         return f'''
             <p style="color: blue;" id="{full_name}">
@@ -285,6 +317,7 @@ class DocstringToDocs():
                         method=m
                     )
                     docstring += f'<div style="margin-left: 40px;">{method_str}</div>'
+                docstring += '<br>'
 
             docstring += '<h3>Functions</h3>'
             functions = inspect.getmembers(module, inspect.isfunction)
@@ -294,6 +327,7 @@ class DocstringToDocs():
                 _populate_toc(module_name=module.__name__, item_name=f[0])
                 func_str = self.format_function(module, f)
                 docstring += f'<div style="margin-left: 20px;">{func_str}</div>'
+                docstring += '<br>'
 
             variables = inspect.getmembers(
                 module,
@@ -321,6 +355,7 @@ class DocstringToDocs():
                 _populate_toc(module_name=module.__name__, item_name=v[0])
                 var_str = self.format_variable(module, v)
                 docstring += f'<div style="margin-left: 20px;">{var_str}</div>'
+                docstring += '<br>'
 
         for module in all_modules:
             process_module(importlib.import_module(module))
@@ -387,12 +422,18 @@ class DocstringToDocs():
 
 generator = DocstringToDocs(
     root_path=os.getcwd(),
-    override_json='''{
-    "orcha.core.tasks.RunType": "The types of runs that can be created.\\n- scheduled: A run that is created by the scheduler\\n- manual: A run that is created manually as a 'one-off'\\n- retry: A run that is created as a retry of a failed run",
-    "orcha.core.scheduler.orcha_log": "The logger instanced used by the scheduler",
-    "orcha.core.task_runner.BASE_THREAD_GROUP": "The base thread group name for all task threads. Defaults to 'base_thread'.",
-    "orcha.utils.sqlalchemy.CHUNK_SIZE": "Sized used for splitting queries sent to the database. Defaults to 1000 (due to mssql limit)."
-}''')
+    override_json=json.dumps({
+        'orcha.core.tasks.RunType': 'The types of runs that can be created.\n- scheduled: A run that is created by the scheduler\n- manual: A run that is created manually as a \'one-off\'\n- retry: A run that is created as a retry of a failed run',
+        'orcha.core.scheduler.orcha_log': 'The logger instanced used by the scheduler',
+        'orcha.core.task_runner.BASE_THREAD_GROUP': 'The base thread group name for all task threads. Defaults to \'base_thread\'.',
+        'orcha.utils.sqlalchemy.CHUNK_SIZE': 'Sized used for splitting queries sent to the database. Defaults to 1000 (due to mssql limit).',
+        'orcha.core.tasks.RunProgress': 'The progress of a run is queued, running, or complete. Success/Failure is recorded in the RunStatus.',
+        'orcha.core.tasks.RunStatus': 'The status of a run is success, failure, or cancelled. The status is used to determine the final status of the run.',
+        'orcha.core.tasks.TaskStatus': 'Tasks can be in the following states:\n- enabled: The task is enabled and will run\n- disabled: The task is disabled and will not run\n- error: The task has had too many failed runs. The task will not run until it is re-enabled\n- inactive: The task has not had any activity from the task_runner so has been disabled. \n- deleted: The task has been deleted and will not run',
+        'orcha.core.tasks.VersionMismatchException': 'Exception raised when the version of the task/run does not match the version in the database.',
+        'orcha.core.monitors.MONITOR_CONFIG': 'The configuration variable for the monitor. See orcha.core.monitors.Config for more information.',
+    })
+)
 
 full_html = generator.generate_docs()
 
