@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
 
+from orcha import current_time
 from orcha.utils import kvdb
 from orcha.utils.sqlalchemy import create_table
 
@@ -61,11 +62,11 @@ def module_function(func):
         if current_run_times is None:
             current_run_times = []
 
-        start_time = dt.now()
+        start_time = current_time()
         while retry_count <= module_config.max_retries and not func_complete:
             try:
                 func_return_value = func(module_base, *args, **kwargs)
-                end_time = dt.now()
+                end_time = current_time()
                 # if the run was successful then update the current run times
                 # and set the function complete flag to break the loop
                 duration = (end_time - start_time).total_seconds()

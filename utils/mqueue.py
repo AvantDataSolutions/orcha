@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Column, DateTime, String
 from sqlalchemy.sql import text as sql
 
+from orcha import current_time
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
 
@@ -558,7 +559,7 @@ class Broker():
         channel = data.channel
         message_str = data.message
         send_status = Status.SendMessage.SUCCESS
-        send_time = dt.now()
+        send_time = current_time()
         # We create all messages first, then write them to the db
         # then send them to the consumers.
         # If we send inside the session, the ack comes back and tries to updaet
@@ -639,7 +640,7 @@ class Broker():
                 RETURNING *
             ''').bindparams(
                 status=Status.Ack.SUCCESS,
-                acked_at=dt.now(),
+                acked_at=current_time(),
                 message_id=data.message_id
             ))
             message = result.fetchone()

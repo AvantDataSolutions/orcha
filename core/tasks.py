@@ -18,6 +18,7 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import text as sql
 
+from orcha import current_time
 from orcha.core import monitors
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.utils.log import LogManager
@@ -419,7 +420,7 @@ class TaskItem():
 
         confirm_initialised()
 
-        version = dt.now()
+        version = current_time()
         current_task = TaskItem.get(task_idk)
         new_s_sets: list[ScheduleSet] = []
         for schedule in schedule_sets:
@@ -532,7 +533,7 @@ class TaskItem():
         self.status = status
         self.notes = notes
         # Toggling status will create a new version
-        self.version = dt.now()
+        self.version = current_time()
         self._update_db()
 
     def set_enabled(self, notes: str) -> None:
@@ -553,7 +554,7 @@ class TaskItem():
         """
         if self.status == 'inactive':
             self.set_enabled('update_active reactivated task')
-        self.last_active = dt.now()
+        self.last_active = current_time()
         self._update_db()
 
     def get_schedule_set(self, set_idk: str) -> ScheduleSet | None:
@@ -582,7 +583,7 @@ class TaskItem():
         particular schedule set.
         """
         cron_schedule = schedule.cron_schedule
-        return croniter(cron_schedule, dt.now()).get_prev(dt)
+        return croniter(cron_schedule, current_time()).get_prev(dt)
 
     def get_time_between_runs(self, schedule: ScheduleSet) -> td:
         """
@@ -590,7 +591,7 @@ class TaskItem():
         particular schedule set. This is used to calculate the time
         between runs for the task.
         """
-        cron = croniter(schedule.cron_schedule)
+        cron = croniter(schedule.cron_schedule, current_time())
         next_run_time_1 = cron.get_next(dt)
         next_run_time_2 = cron.get_next(dt)
         time_delta = next_run_time_2 - next_run_time_1
@@ -629,7 +630,7 @@ class TaskItem():
         if schedule is None:
             schedule = self.schedule_sets[0]
         cron_schedule = schedule.cron_schedule
-        return croniter(cron_schedule, dt.now()).get_next(dt)
+        return croniter(cron_schedule, current_time()).get_next(dt)
 
     def is_run_due(self, schedule: ScheduleSet):
         """
@@ -743,7 +744,7 @@ class TaskItem():
 
             deleted_rows = session.execute(sql(query), {
                 'task_idf': self.task_idk,
-                'date_cutoff': dt.now() - max_age
+                'date_cutoff': current_time() - max_age
             }).all()
 
             if len(deleted_rows) == 0:
@@ -904,7 +905,7 @@ class RunItem():
 
         item = RunItem(
             _task = task,
-            update_timestamp = dt.now(),
+            update_timestamp = current_time(),
             run_idk = str(uuid4()),
             task_idf = task.task_idk,
             set_idf = schedule.set_idk,
@@ -1096,7 +1097,7 @@ class RunItem():
                 # update the run in the database if updated == updated
                 # to prevent overwriting changes from other processes
                 # and then update the updated time to the current time
-                update_dt = dt.now()
+                update_dt = current_time()
                 updated_rows = session.execute(sql('''
                     INSERT INTO orcha.runs (
                         run_idk, update_timestamp, task_idf, set_idf, run_type, scheduled_time,
@@ -1169,7 +1170,7 @@ class RunItem():
         # updated is the last_active time which is purely a change to this
         # one column and nothing else; don't need to reload the run as
         # we don't care if we 'roll back' a last_active time every now and then
-        self.last_active = dt.now()
+        self.last_active = current_time()
         with s_maker.begin() as session:
             session.execute(sql('''
                 UPDATE orcha.runs
@@ -1362,14 +1363,14 @@ class RunItem():
             new_output.update(self.output)
 
         if progress == RunProgressEnum.running.value:
-            start_time = dt.now()
+            start_time = current_time()
             end_time = None
         elif progress == RunProgressEnum.complete.value:
             start_time = self.start_time
             if zero_duration:
                 end_time = self.start_time
             else:
-                end_time = dt.now()
+                end_time = current_time()
             start_time = self.start_time
         elif progress == RunProgressEnum.queued.value:
             start_time = None

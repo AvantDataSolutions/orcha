@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
 
+from orcha import current_time
 from orcha.core import monitors
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.core.tasks import TaskItem
@@ -374,7 +375,7 @@ class Scheduler:
         with s_maker.begin() as session:
             # Using a single scheduler for now
             session.merge(
-                SchedulerRecord(scheduler_idk='main', loaded_at=dt.now())
+                SchedulerRecord(scheduler_idk='main', loaded_at=current_time())
             )
 
     @staticmethod
@@ -422,9 +423,9 @@ class Scheduler:
             if last_active is not None:
                 # if it's over 10 minutes since the last active time
                 # then assume roughly 5 alerts have been sent and stop
-                if last_active < dt.now() - td(minutes=10):
+                if last_active < current_time() - td(minutes=10):
                     continue
-                elif last_active < dt.now() - td(minutes=5):
+                elif last_active < current_time() - td(minutes=5):
                     Producer().send_message(
                         channel=MqueueChannels.inactive_scheduler,
                         message=MqueueChannels.inactive_scheduler.message_type(
@@ -439,9 +440,9 @@ class Scheduler:
         with s_maker.begin() as session:
             # Using a single scheduler for now
             session.merge(
-                SchedulerRecord(scheduler_idk='main', last_active=dt.now())
+                SchedulerRecord(scheduler_idk='main', last_active=current_time())
             )
-            self.last_refresh = dt.now()
+            self.last_refresh = current_time()
 
     def start(self):
         """
@@ -542,7 +543,7 @@ class Scheduler:
                 open_runs = task.get_running_runs() + task.get_queued_runs()
                 historical_count = 0
                 for run in open_runs:
-                    run_age = dt.now() - run.scheduled_time
+                    run_age = current_time() - run.scheduled_time
                     if run_age > self.fail_historical_age:
                         run.set_status(
                             status='failed',
@@ -567,7 +568,7 @@ class Scheduler:
                         historical_count += 1
                     elif run.progress == 'running':
                         if run.last_active is not None:
-                            if run.last_active < dt.now() - td(minutes=5):
+                            if run.last_active < current_time() - td(minutes=5):
                                 run.set_status(
                                     status='failed',
                                     output={
@@ -648,7 +649,7 @@ class Scheduler:
                             # then it's stale and should be disabled.
                             # Tasks should be checked every 5s, and runs at most frequent, every 1 minute
                             # so a task should have been active many times since the last run
-                            if task.last_active < min(last_run.scheduled_time, dt.now() - td(minutes=5)):
+                            if task.last_active < min(last_run.scheduled_time, current_time() - td(minutes=5)):
                                 task.set_status('inactive', 'Task has been inactive since last scheduled run')
                                 Producer().send_message(
                                     channel=MqueueChannels.inactive_task,
