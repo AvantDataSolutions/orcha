@@ -135,6 +135,11 @@ class EntityBase(ModuleBase):
 
 @dataclass
 class DatabaseEntity(EntityBase):
+    """
+    The base class for all database entities which provides the
+    connection details for the database which includes the host,
+    port, and database name.
+    """
     host: str
     port: int
     database_name: str
@@ -143,6 +148,15 @@ class DatabaseEntity(EntityBase):
     _tables: list[Table] = field(default_factory=list)
 
     def run_query(self, query: str, bindparams: dict, return_values: bool):
+        """
+        Execute a query on the database using the sessionmaker
+        and return the results as a dataframe.
+        ### Parameters:
+        - query: The query to execute
+        - bindparams: The bind parameters for the query
+        - return_values: If True, the results will be returned as a dataframe
+        otherwise None will be returned. This is used for non-returning queries.
+        """
         if self.sessionmaker is None:
             raise Exception('No sessionmaker set')
         with self.sessionmaker.begin() as db:
@@ -199,6 +213,24 @@ class DatabaseEntity(EntityBase):
         self._tables.append(table)
         return table
 
+    def get_all_tables(self, schema_name: str) -> list[Table]:
+        """
+        Get all tables from the database
+        """
+        if self.engine is None:
+            raise Exception('No engine set')
+
+        tables = []
+        inspector = inspect(self.engine)
+        schemas = inspector.get_schema_names()
+
+        for schema in schemas:
+            if schema == schema_name or True:
+                for table_name in inspector.get_table_names(schema=schema):
+                    tables.append(Table(table_name, MetaData(schema=schema), autoload_with=self.engine))
+
+        return tables
+
     def get_database_table(self, schema_name: str, table_name: str) -> Table:
         """
         Get a table from the database
@@ -235,15 +267,29 @@ class DatabaseEntity(EntityBase):
 
 
 class RestEntity(EntityBase):
+    """
+    The base class for all rest entities which provides the url.
+    """
     url: str
 
 
 class PythonEntity(EntityBase):
+    """
+    The base class for all python entities which provides the data.
+    ### Attributes
+    - credentials: A dictionary of arbitrary credentials to be used by the entity.
+    """
     credentials: dict | None = None
 
 
 @dataclass
 class SourceBase(ModuleBase):
+    """
+    This is the base class for all sources. This is always extended
+    by a specific source type; postgres, mysql, etc.
+    While this class is abstract, it is not marked as such and will
+    raise an exception if used directly.
+    """
     data_entity: EntityBase | None
 
     def __init__(self, data_entity: EntityBase) -> None:
@@ -254,17 +300,31 @@ class SourceBase(ModuleBase):
 
     @module_function
     def get(self, **kwargs) -> pd.DataFrame:
+        """
+        The get method is used to get data from the source. Implementations
+        are specific to the source type. Raises an exception if called directly
+        on a SourceBase instance.
+        """
         raise NotImplementedError(f'{__class__.__name__} does not implement get')
 
 
 @dataclass
 class DatabaseSource(SourceBase):
+    """
+    A generic source that executes arbitrary SQL queries
+    to return any data that is required.
+    Returns a dataframe.
+    """
     data_entity: DatabaseEntity | None
     tables: list[Table]
     query: str
 
     @module_function
     def get(self, **kwargs) -> pd.DataFrame:
+        """
+        Get the data from the database using the query provided
+        and calling the read_sql method on the data entity.
+        """
         if self.data_entity is None:
             raise Exception('No data entity set for source')
         elif self.tables is None or self.tables == []:
@@ -313,6 +373,10 @@ class SinkBase(ModuleBase):
 
     @module_function
     def save(self, data: pd.DataFrame, **kwargs) -> None:
+        """
+        The save method is used to save data to the sink. Implementations
+        are specific to the sink type.
+        """
         raise NotImplementedError(f'{__class__.__name__} does not implement save')
 
 
@@ -325,7 +389,10 @@ class DatabaseSink(SinkBase):
 
     @module_function
     def save(self, data: pd.DataFrame, **kwargs) -> None:
-
+        """
+        Save the data to the database using the to_sql method
+        provided by the data entity.
+        """
         if self.data_entity is None:
             raise Exception('No data entity set for sink')
         elif self.table is None:
@@ -349,6 +416,13 @@ class TransformBase(ModuleBase, Generic[T]):
 
     @module_function
     def transform(self, inputs:T, **kwargs) -> pd.DataFrame:
+        """
+        Perform a transformation on the inputs and return a dataframe.
+        This is a wrapper around the transform_func provided and
+        create_inputs is used to ensure the correct type of inputs.
+        This is enables logging of module run times and retries for
+        long or error-prone transformations.
+        """
         return self.transform_func(inputs)
 
 
@@ -359,9 +433,18 @@ class ValidationBase(ModuleBase, Generic[T]):
 
     @module_function
     def validate(self, data: pd.DataFrame, inputs:T, **kwargs) -> bool:
+        """
+        Perform a validation on the data and inputs and return a boolean.
+        This is a wrapper around the validate_func provided and
+        create_inputs is used to ensure the correct type of inputs.
+        This is primarily for re-use of custom validation functions.
+        """
         return self.validate_func(data, inputs, **kwargs)
 
 
 @dataclass
 class PipelineBase(ModuleBase):
+    """
+    Not implemented yet
+    """
     not_implemented = NotImplementedError('This method is not implemented')

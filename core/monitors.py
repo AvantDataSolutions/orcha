@@ -59,8 +59,16 @@ class MqueueConfig:
 
 
 MONITOR_CONFIG: Config | None = None
+"""
+This variable is used to store the config for the monitor
+and alert classes. This must be set before using any of the
+monitor or alert classes.
+"""
 
 class AlertOutputType(Enum):
+    """
+    This class is used to define the output type of the alert.
+    """
     PLAIN_TEXT = 'plain_text'
     JSON = 'json'
     HTML = 'html'

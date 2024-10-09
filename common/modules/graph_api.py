@@ -62,6 +62,9 @@ class _Shared:
 
 @dataclass
 class SharedDriveItem:
+    """
+    Represents a shared drive item from the Microsoft Graph API.
+    """
     odata_context: str
     microsoft_graph_downloadUrl: str
     microsoft_graph_Decorator: str
@@ -144,6 +147,9 @@ class _ContentType:
 
 @dataclass
 class Item:
+    """
+    Represents an item from a SharePoint list.
+    """
     eTag: str
     createdDateTime: str
     id: str
@@ -174,6 +180,9 @@ class Item:
 
 
 class ItemList:
+    """
+    Represents a list of items from a SharePoint list.
+    """
     def __init__(self, context, items: list[Item], columns: list[str] | None = None):
         self.context = context
         self.items = items
@@ -181,6 +190,10 @@ class ItemList:
 
     @staticmethod
     def from_dict(data: dict):
+        """
+        Converts a dictionary retrieved from the Microsoft Graph API to an ItemList object.
+        This assumes the existence of an @odata.context key and a value key.
+        """
         return ItemList(
             context=data["@odata.context"],
             items=[Item.from_dict(item) for item in data['value']]
@@ -240,6 +253,9 @@ class AppOnlyEntity(EntityBase):
         self.authority = authority
 
     def get_token(self):
+        """
+        Returns a token for the App-Only flow.
+        """
         return graph_api.get_msal_token_app_only_login(
             self.client_id, self.client_secret, self.authority
         )
@@ -266,6 +282,9 @@ class ResourceOwnerEntity(EntityBase):
         self.authority = authority
 
     def get_token(self):
+        """
+        Returns a token for the ROPC flow.
+        """
         return graph_api.get_msal_token_resource_owner_login(
             self.client_id, self.authority, self.user_name, self.password
         )

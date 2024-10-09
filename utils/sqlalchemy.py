@@ -134,6 +134,9 @@ def sqlalchemy_build(base: DeclarativeMeta, engine: Engine, schema_name: str):
 
 
 def sqlalchemy_build_schema(schema_name: str, engine: Engine):
+    """
+    Creates a schema in the database if it does not already exist.
+    """
     engine_inspect = inspect(engine)
     if engine_inspect is None:
         raise Exception('Engine inspect failed for schema: ' + schema_name)
@@ -143,6 +146,9 @@ def sqlalchemy_build_schema(schema_name: str, engine: Engine):
 
 
 def sqlalchemy_build_table(table: Table, engine: Engine):
+    """
+    Creates a table in the database if it does not already exist.
+    """
     table.create(engine, checkfirst=True)
 
 
@@ -248,7 +254,11 @@ def create_table(
 def sqlalchemy_replace(
         session: sessionmaker, table: Table, data: pd.DataFrame
     ):
-
+    """
+    Replaces the data in a table with the data in a dataframe.
+    Uses the session to execute the replace statement and chunk the data
+    to reduce memory usage.
+    """
     with session.begin() as db:
         delete_stmt = delete(table)
         db.execute(delete_stmt)
@@ -269,6 +279,11 @@ def sqlalchemy_replace(
 def postgres_upsert(
         session: sessionmaker, table: Table, data: pd.DataFrame
     ) -> None:
+    """
+    Performs an upsert operation on a PostgreSQL table using
+    on_conflict_do_update. This is done in chunks to reduce memory
+    usage when upserting large dataframes.
+    """
     if len(data) == 0:
         return None
 
@@ -296,6 +311,11 @@ def postgres_upsert(
 def sqlite_upsert(
         session: sessionmaker, table: Table, data: pd.DataFrame
     ) -> None:
+    """
+    Performs an upsert operation on a SQLite table using
+    OR REPLACE. This is done in chunks to reduce memory
+    usage when upserting large dataframes.
+    """
     if len(data) == 0:
         return None
 
@@ -317,6 +337,13 @@ def mssql_upsert(
         s_maker: sessionmaker[Session],
         table: Table
     ):
+    """
+    Performs an upsert operation on a MSSQL table using
+    MERGE. This is done in chunks to reduce memory
+    usage when upserting large dataframes.
+    A temporary table is created to hold the data and then
+    merged with the target table.
+    """
     if len(data) == 0:
         return None
     with s_maker.begin() as session:

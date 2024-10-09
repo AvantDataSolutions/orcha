@@ -14,10 +14,19 @@ def expire_timeout(thread_name):
 
 
 def store_exception(exec: Exception):
+    """
+    Stores an exception in the global store.
+    """
     _function_exceptions[threading.current_thread().name] = exec
 
 
 def clear_exception(thread_name: str | None):
+    """
+    Clears the exception from the global store. Any cleared
+    exceptions are not returned and are lost.
+    - Consider using `get_exception` to get the exception which
+    will also clear it.
+    """
     t_name = thread_name or threading.current_thread().name
     _function_exceptions.pop(t_name, None)
 

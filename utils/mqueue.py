@@ -15,35 +15,61 @@ from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
 
 class Status:
+    """
+    The various status codes used within the mqueue system.
+    """
     class Ack:
+        """
+        The status codes for acknowledging messages.
+        """
         SUCCESS = 'ack_success'
         FAIL = 'ack_failed'
 
     class RegisterConsumer:
+        """
+        The status codes for registering a consumer.
+        """
         SUCCESS = 'register_consumer_success'
         FAIL = 'register_consumer_failed'
+        BROKER_PING_FAIL = 'register_consumer_broker_ping_failed'
 
     class UnregisterConsumer:
+        """
+        The status codes for unregistering a consumer.
+        """
         SUCCESS = 'unregister_consumer_success'
         FAIL = 'unregister_consumer_failed'
         NOT_REGISTERED = 'unregister_consumer_not_registered'
 
     class SendMessage:
+        """
+        The status codes for sending a message.
+        """
         SUCCESS = 'send_message_success'
         FAIL = 'send_message_failed'
         NO_CHANNEL = 'send_message_no_channel'
+        BROKER_PING_FAIL = 'send_message_broker_ping_failed'
 
 
 class SendMessageInput(BaseModel):
+    """
+    The input model for sending a message to the broker.
+    """
     channel: str
     message: str
 
 
 class SendAckInput(BaseModel):
+    """
+    The input model for acknowledging a message.
+    """
     message_id: str
 
 
 class RecieveMessageInput(BaseModel):
+    """
+    The input model for receiving a message from the broker.
+    """
     message_id: str
     channel: str
     name: str
@@ -51,12 +77,18 @@ class RecieveMessageInput(BaseModel):
 
 
 class RegisterConsumerInput(BaseModel):
+    """
+    The input model for registering a consumer with the broker.
+    """
     channel: str
     consumer_name: str
     url: str
 
 
 class UnregisterConsumerInput(BaseModel):
+    """
+    The input model for unregistering a consumer with the broker.
+    """
     channel: str
     consumer_name: str
 
@@ -82,6 +114,11 @@ class FastApiApp():
 
     @staticmethod
     def setup(bind_ip: str, bind_port: int):
+        """
+        The setup function for the FastAPI app.
+        This function should be called before running the app and
+        ensures that the app is setup with the correct host and port.
+        """
         # if we've already setup the FastAPI app, then make sure
         # we're trying to start it with the same details as expected
         if FastApiApp.bind_ip is not None:
@@ -99,6 +136,10 @@ class FastApiApp():
 
     @staticmethod
     def run(in_thread: bool, autostart: bool = True):
+        """
+        The run function for the FastAPI app to listen for incoming
+        messages from the message queue.
+        """
         if FastApiApp.bind_ip is None or FastApiApp.bind_port is None:
             raise Exception('FastAPI app not setup')
 
@@ -132,8 +173,16 @@ class Message(Protocol):
     """
     @classmethod
     def from_json(cls, json_str: str) -> 'Message':
+        """
+        Converts a json string to a message object. Must
+        be implemented by the extending class.
+        """
         ...
     def to_json(self) -> str:
+        """
+        Converts the message object to a json string. Must
+        be implemented by the extending class.
+        """
         ...
 
 # Generic type for the channel class to ensure that the message type
@@ -197,6 +246,10 @@ class Consumer():
     @staticmethod
     @_fastapi_app.post('/receive-message')
     def receive_message(data: RecieveMessageInput):
+        """
+        Receives a message from the message queue and calls the appropriate
+        callback for the channel.
+        """
         message_id = data.message_id
         channel_name = data.channel
         channel = Consumer.channels.get(channel_name)
@@ -259,6 +312,11 @@ class Consumer():
             consumer_name: str, channel: Channel | list[Channel],
             callback: Callable[[Channel, Message], Any]
         ):
+        """
+        Registers a consumer with the broker to listen for messages on the
+        provided channel(s) and call the provided callback when a message
+        is received.
+        """
         if isinstance(channel, Channel):
             channel = [channel]
 
@@ -288,6 +346,9 @@ class Consumer():
 
     @staticmethod
     def ack_message(message_id: str):
+        """
+        Acknowledges a message with the broker.
+        """
         data = SendAckInput(message_id=message_id)
         response = requests.post(
             url=f'{Consumer.broker_host}:{Consumer.broker_port}/ack-message',
@@ -320,6 +381,10 @@ class Producer():
         self.broker_port = broker_port if broker_port else Producer.default_broker_port
 
     def send_message(self, channel: Channel, message: Message):
+        """
+        Sends a message to the message queue on the provided channel.
+        The message must be of the correct type for the channel.
+        """
         # make sure the message is of the correct type for the channel
         if not isinstance(message, channel.message_type):
             raise Exception('Message type does not match channel message type')
@@ -356,6 +421,10 @@ class Broker():
         mqueue_pg_pass: str,
         mqueue_pg_schema = 'message_queue'
     ) -> None:
+        """
+        Sets up the broker with the provided database details.
+        Also creates the necessary tables in the database.
+        """
         if Broker.Base is not None:
             return None
 
@@ -402,6 +471,9 @@ class Broker():
 
     @staticmethod
     def get_consumers():
+        """
+        Gets all the consumers from the database.
+        """
         with Broker.session_maker.begin() as tx:
             db_consumers = tx.execute(sql('''
                 SELECT * FROM message_queue.consumers
@@ -416,6 +488,9 @@ class Broker():
 
     @staticmethod
     def run(bind_ip: str, bind_port: int) -> None:
+        """
+        Runs the FastAPI app in a separate thread to avoid blocking.
+        """
         if Broker.Base is None:
             raise Exception('Broker not setup')
         FastApiApp.setup(bind_ip, bind_port)
@@ -424,6 +499,9 @@ class Broker():
     @staticmethod
     @_fastapi_app.post('/register-consumer')
     def register_consumer(data: RegisterConsumerInput):
+        """
+        Registers a consumer with the broker.
+        """
         channel = data.channel
         consumer_name = data.consumer_name
         url = data.url
@@ -444,6 +522,9 @@ class Broker():
     @staticmethod
     @_fastapi_app.post('/unregister-consumer')
     def unregister_consumer(data: UnregisterConsumerInput):
+        """
+        Unregisters a consumer with the broker.
+        """
         channel = data.channel
         consumer_name = data.consumer_name
 
@@ -465,6 +546,12 @@ class Broker():
     @staticmethod
     @_fastapi_app.post('/send-message')
     def send_message(data: SendMessageInput):
+        """
+        Sends a message to the registered consumers on the provided channel.
+        This hashes the message to create a unique message id and
+        then sends the message to the consumers.
+        """
+
         consumers = Broker.consumer_cache.get_consumers(data.channel)
         if not consumers:
             return Status.SendMessage.NO_CHANNEL
@@ -522,6 +609,9 @@ class Broker():
 
     @staticmethod
     def send_message_to_consumer(url, id, channel, name, message_str):
+        """
+        Helper function to send a message to a consumer.
+        """
         data = RecieveMessageInput(
             message_id=id,
             channel=channel,
@@ -535,6 +625,9 @@ class Broker():
     @staticmethod
     @_fastapi_app.post('/ack-message')
     def ack_message(data: SendAckInput):
+        """
+        Endpoint to acknowledge a message.
+        """
         with Broker.session_maker.begin() as db:
             # Binding acked_at to the current time
             # to make sure we use python time not db time
@@ -557,6 +650,9 @@ class Broker():
 
 
 class MessageItem(BaseModel):
+    """
+    The model for a message item in the message queue.
+    """
     model_config = ConfigDict(from_attributes=True)
     id: str
     created_at: dt
@@ -570,6 +666,9 @@ class MessageItem(BaseModel):
 
 
 class ConsumerItem(BaseModel):
+    """
+    The model for a consumer item in the message queue.
+    """
     model_config = ConfigDict(from_attributes=True)
     channel: str
     name: str
@@ -577,13 +676,26 @@ class ConsumerItem(BaseModel):
 
 
 class ConsumerCache():
+    """
+    A cache for consumers to minimize database queries by preventing
+    the need to query the database for every message sent.
+    - NOTE This cache is not database backed and relies on the
+    cache user to manage adding/removing consumers from the
+    cache when they are added/removed from the database.
+    """
     def __init__(self):
         self.consumers: dict[str, dict[str, ConsumerItem]] = {}
 
     def has_channel(self, channel: str):
+        """
+        Checks if the cache has a channel.
+        """
         return channel in self.consumers
 
     def add_consumer(self, channel: str, name: str, url):
+        """
+        Adds a consumer to the cache and creates the channel if it doesn't exist.
+        """
         if channel not in self.consumers:
             self.consumers[channel] = {}
 
@@ -592,6 +704,9 @@ class ConsumerCache():
         )
 
     def remove_consumer(self, channel: str, name: str):
+        """
+        Removes a consumer from the cache.
+        """
         if channel in self.consumers:
             self.consumers[channel] = {
                 n: self.consumers[channel][n]
@@ -600,9 +715,17 @@ class ConsumerCache():
             }
 
     def get_consumer(self, channel: str, name: str):
+        """
+        Gets a consumer from the cache. This will raise
+        a KeyError if the consumer does not exist.
+        """
         return self.consumers[channel][name]
 
     def get_consumers(self, channel: str):
+        """
+        Gets all the consumers for a channel. This will not
+        raise an error if the channel does not exist.
+        """
         consumers = self.consumers.get(channel, {})
 
         return [

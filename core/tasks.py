@@ -30,13 +30,16 @@ from orcha.utils.sqlalchemy import (
 
 print('Loading:',__name__)
 
-tasks_log = LogManager('tasks')
+_tasks_log = LogManager('tasks')
 
 class VersionMismatchException(Exception):
     pass
 
 class MqueueChannels():
-
+    """
+    This class is used to define the channels for the mqueue
+    that the monitors and alerts will use.
+    """
     class _RunFailedMessage:
         def __init__(self, task_id: str, run_id: str):
             self.task_id = task_id
@@ -193,6 +196,10 @@ class ScheduleSet():
 
     @staticmethod
     def list_to_dict(schedule_sets: list[ScheduleSet]) -> list[dict]:
+        """
+        Converts a list of ScheduleSet instances to a list of dictionaries.
+        Typically used when saving to the database.
+        """
         return [x.to_dict() for x in schedule_sets]
 
     @staticmethod
@@ -217,11 +224,19 @@ class ScheduleSet():
 
     @classmethod
     def from_json(cls, json_str: str) -> ScheduleSet:
+        """
+        Creates a schedule set from a json string, commonly used
+        when loading from the database.
+        """
         data = json.loads(json_str)
         return cls.from_dict(data)
 
     @classmethod
     def from_dict(cls, data: dict) -> ScheduleSet:
+        """
+        Creates a schedule set from a dictionary, commonly used
+        when loading from the database.
+        """
         s_set = cls.create_with_key(
             set_idk=data['set_idk'],
             cron_schedule=data['cron_schedule'],
@@ -240,6 +255,10 @@ class ScheduleSet():
         return s_set
 
     def to_dict(self):
+        """
+        Converts the schedule set to a dictionary, commonly used
+        when saving to the database.
+        """
         if not self.trigger_task:
             trigger_task_json = None
         else:
@@ -259,6 +278,27 @@ class ScheduleSet():
 
 
 class TaskItem():
+    """
+    The TaskItem class is used to manage tasks in Orcha. This class
+    provides functions to create, update, delete and manage tasks
+    and their schedules. It also provides functions to get runs for
+    the task and schedule runs.
+    ### Note: Instanciating this class directly will not create a new task
+    in the database. Use the create function to create a new task.
+    ### Attributes:
+    - task_id: The unique id for the task. Used as a PK in the database.
+    - version: The version of the task
+    - task_metadata: Additional metadata for the task
+    - task_tags: A list of tags for the task
+    - name: The name of the task
+    - description: A description of the task
+    - schedule_sets: A list of ScheduleSet instances for the task
+    - thread_group: The thread group for the task
+    - last_active: The last time the task was active
+    - status: The status of the task
+    - notes: Additional notes for the task
+    - task_monitors: A list of monitors to raise alerts for the task
+    """
     task_idk: str
     version: dt
     task_metadata: dict
@@ -307,6 +347,9 @@ class TaskItem():
 
     @staticmethod
     def get_all() -> list[TaskItem]:
+        """
+        Returns all tasks in the database as a list of TaskItem instances.
+        """
         confirm_initialised()
         data = get_latest_versions(
             s_maker=s_maker,
@@ -319,6 +362,9 @@ class TaskItem():
 
     @staticmethod
     def get(task_idk: str) -> TaskItem | None:
+        """
+        Returns a task by its task_idk. If no task is found then None is returned.
+        """
         confirm_initialised()
         data = get_latest_versions(
             s_maker=s_maker,
@@ -458,6 +504,11 @@ class TaskItem():
             '''), {'task_idk': self.task_idk})
 
     def _update_db(self) -> None:
+        """
+        Internal function to update the task in the database.
+        Note: Either updates the current version or creates a new version
+        if the version has been updated elsewhere.
+        """
         with s_maker.begin() as session:
             session.merge(TaskRecord(
                 task_idk = self.task_idk,
@@ -485,6 +536,10 @@ class TaskItem():
         self._update_db()
 
     def set_enabled(self, notes: str) -> None:
+        """
+        Sets the task status to enabled. This is used to re-enable a task
+        from any status.
+        """
         if self.status == 'enabled':
             return
         self.set_status('enabled', notes)
@@ -502,22 +557,39 @@ class TaskItem():
         self._update_db()
 
     def get_schedule_set(self, set_idk: str) -> ScheduleSet | None:
+        """
+        Gets a schedule set by its set_idk. If no schedule set is found then
+        None is returned.
+        """
         for schedule in self.schedule_sets:
             if schedule.set_idk == set_idk:
                 return schedule
         return None
 
     def get_schedule_from_id(self, set_idk: str) -> ScheduleSet | None:
+        """
+        Gets a schedule set by its set_idk. If no schedule set is found then
+        None is returned.
+        """
         for schedule in self.schedule_sets:
             if schedule.set_idk == set_idk:
                 return schedule
         return None
 
     def get_last_scheduled(self, schedule: ScheduleSet) -> dt:
+        """
+        Returns the last time the task was scheduled to run for the
+        particular schedule set.
+        """
         cron_schedule = schedule.cron_schedule
         return croniter(cron_schedule, dt.now()).get_prev(dt)
 
     def get_time_between_runs(self, schedule: ScheduleSet) -> td:
+        """
+        Returns the time between the last two scheduled runs for the
+        particular schedule set. This is used to calculate the time
+        between runs for the task.
+        """
         cron = croniter(schedule.cron_schedule)
         next_run_time_1 = cron.get_next(dt)
         next_run_time_2 = cron.get_next(dt)
@@ -533,6 +605,10 @@ class TaskItem():
     #     )
 
     def get_last_run(self, schedule: ScheduleSet | None) -> RunItem | None:
+        """
+        Gets the latest run for the task. If no schedule is provided
+        then the latest run from all schedules is returned.
+        """
         return RunItem.get_latest(task=self, schedule=schedule)
 
     def get_latest_runs(self, schedule: ScheduleSet | None, count: int) -> list[RunItem]:
@@ -556,6 +632,9 @@ class TaskItem():
         return croniter(cron_schedule, dt.now()).get_next(dt)
 
     def is_run_due(self, schedule: ScheduleSet):
+        """
+        Returns if a run is due for the particular schedule set.
+        """
         is_due, _ = self.is_run_due_with_last(schedule)
         return is_due
 
@@ -627,9 +706,17 @@ class TaskItem():
             return None
 
     def get_queued_runs(self) -> list[RunItem]:
+        """
+        Returns all queued runs for the task.
+        This is an alias for RunItem.get_all_queued(task=<task_idk>)
+        """
         return RunItem.get_all_queued(task=self)
 
     def get_running_runs(self) -> list[RunItem]:
+        """
+        Returns all running runs for the task.
+        This is an alias for RunItem.get_running_runs(task=<task_idk>)
+        """
         return RunItem.get_running_runs(task=self)
 
     def prune_runs(self, max_age: td | None) -> int:
@@ -968,6 +1055,9 @@ class RunItem():
 
     @staticmethod
     def get(run_id: str, task: TaskItem | None = None) -> RunItem | None:
+        """
+        Returns a run by its run_id. If no run is found then None is returned.
+        """
         confirm_initialised()
         with s_maker.begin() as session:
             data = session.query(RunRecord).filter(
@@ -1052,7 +1142,7 @@ class RunItem():
                     raise VersionMismatchException('Run update using mismatched versions')
                 self.updated = update_dt
         except Exception as e:
-            tasks_log.add_entry(
+            _tasks_log.add_entry(
                 actor='run_item', category='database',
                 text='error updating run in database',
                 json={
@@ -1160,7 +1250,7 @@ class RunItem():
                     try_count += 1
 
                 if try_count >= max_tries or values_changed != '':
-                    tasks_log.add_entry(
+                    _tasks_log.add_entry(
                         actor='run_item', category='database',
                         text='error updating run in database',
                         json={
@@ -1351,6 +1441,9 @@ class TaskMonitorBase(MonitorBase, ABC):
         self.tasks = tasks
 
     def add_task(self, task: TaskItem):
+        """
+        Adds a task to the monitor.
+        """
         self.tasks.add(task)
 
 
@@ -1395,7 +1488,7 @@ class FailedRunsMonitor(TaskMonitorBase):
 
     def check(self, channel: Channel, message: Message):
         """
-        This method is used to monitor a run.
+        This method is used to monitor a run and will raise a failed alert.
         """
         if not isinstance(message, MqueueChannels.run_failed.message_type):
             raise Exception('Task monitor received invalid message type: ' + str(type(message)))

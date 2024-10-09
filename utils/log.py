@@ -10,7 +10,10 @@ from orcha.utils.sqlalchemy import sqlalchemy_build, postgres_scaffold
 
 
 class LogManager:
-
+    """
+    The base class for logging into a database.
+    This is designed for very simple logging.
+    """
     @staticmethod
     def _setup_sqlalchemy(
             user: str, passwd: str,

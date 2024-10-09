@@ -19,7 +19,11 @@ runner_log = LogManager('task_runner')
 
 
 class ThreadHandler():
-
+    """
+    The core class for handling threads in the task runner.
+    This manages the actual running of tasks in threads and
+    the updating of the active time for all tasks in the handler.
+    """
     def __init__(self, thread_group: str):
         self.is_running = False
         self.thread_group = thread_group
@@ -27,6 +31,10 @@ class ThreadHandler():
         self.tasks: list[TaskItem] = []
 
     def start(self):
+        """
+        Start the thread handler. Will raise an exception if the
+        thread is already running.
+        """
         self.is_running = True
         if self.thread is not None:
             raise Exception('Thread already started')
@@ -34,11 +42,19 @@ class ThreadHandler():
         self.thread.start()
 
     def stop(self):
+        """
+        Stop the thread handler. Will not raise an exception if the
+        thread is not running.
+        """
         self.is_running = False
         if self.thread is not None:
             self.thread.join()
 
     def add_task(self, task: TaskItem):
+        """
+        Add a task to the handler. If the task is already in the
+        handler then it will be replaced by the new task.
+        """
         # check if the task is in the list by id and if not append it
         task_ids = [t.task_idk for t in self.tasks]
         if task.task_idk not in task_ids:
@@ -103,6 +119,10 @@ class ThreadHandler():
             self.process_task(task)
 
     def process_task(self, task: TaskItem):
+        """
+        Process a single task in the handler. This will run the task
+        in a separate thread and update the active time for the task.
+        """
         # log that the task is running
         runner_log.add_entry(
             actor='main_loop', category='processing_task',
@@ -285,7 +305,10 @@ class ThreadHandler():
 
 
 class TaskRunner():
-
+    """
+    The TaskRunner class is used to run tasks in threads and manage
+    the running of tasks in the system.
+    """
     handlers: dict[str, ThreadHandler] = {}
     task_timeout: int = 1800
     """
@@ -314,6 +337,10 @@ class TaskRunner():
                 tasks._register_task_with_runner = self.register_task
 
     def register_task(self, task: TaskItem):
+        """
+        This registers a task with the task runner such that the runner
+        will run the task when it finds queued runs for the task.
+        """
         # If we're not using thread groups
         # then we default to using the base thread
         if self.use_thread_groups:
@@ -336,14 +363,24 @@ class TaskRunner():
         self.handlers[thread_group].add_task(task)
 
     def register_tasks(self, tasks: list[TaskItem]):
+        """
+        This registers a list of tasks with the task runner.
+        Simple wrapper around the register_task function.
+        """
         for task in tasks:
             self.register_task(task)
 
     def process_all_tasks(self):
+        """
+        This processes all tasks in all the handlers.
+        """
         for handler in self.handlers.values():
             handler.process_all_tasks()
 
     def stop_all(self, stop_base = False):
+        """
+        This stops all the threads that have been registered.
+        """
         for handler in self.handlers.values():
             if handler.thread_group == BASE_THREAD_GROUP and not stop_base:
                 continue

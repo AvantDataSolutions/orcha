@@ -66,6 +66,10 @@ class RunningState(Enum):
 
 
 class MqueueChannels():
+    """
+    This class is used to define the channels and message types
+    for the scheduler monitor.
+    """
 
     class _HistoricalRunMessage:
         def __init__(self, scheduler_id: str, task_id: str, run_id: str, note: str):
@@ -472,6 +476,11 @@ class Scheduler:
         return self.thread
 
     def stop(self):
+        """
+        This stops the scheduler threads, and is safe to call even if the
+        threads are already stopped. If the threads are already stopped, then
+        this will do nothing. This will block until the threads have stopped.
+        """
         scheduler_log.add_entry(
             actor='scheduler', category='status', text='Stopping', json={}
         )
@@ -480,10 +489,10 @@ class Scheduler:
             self.thread.join()
 
     def pause(self):
-        scheduler_log.add_entry(
-            actor='scheduler', category='status', text='Pausing', json={}
-        )
-        self.running_state
+        """
+        Not implemented yet.
+        """
+        raise NotImplementedError('Pausing the scheduler is not implemented yet.')
 
     def _prune_runs_and_logs(self):
         while self.running_state != RunningState.stopped:

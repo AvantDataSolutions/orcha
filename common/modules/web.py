@@ -12,6 +12,14 @@ from orcha.core.module_base import EntityBase, SourceBase, SinkBase, module_func
 
 
 class RestEntity(EntityBase):
+    """
+    A REST entity that contains the url, headers, cookies and
+    any other required information to make a rest call.
+    This provides cookie and header creation functions
+    to allow for dynamic headers and cookies based authentication.
+    Username and password are optional and will be passed for
+    basic authentication if provided.
+    """
     url: str
     headers: dict | None = None
     create_headers: Callable[[], dict] | None = None
@@ -43,6 +51,9 @@ class RestEntity(EntityBase):
 
 @dataclass
 class RestSource(SourceBase):
+    """
+    A source that calls a rest endpoint and returns the response.
+    """
     data_entity: RestEntity | None
     request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
     request_data: dict | str | None = None

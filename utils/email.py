@@ -91,6 +91,9 @@ class EmailTemplate():
             content: str,
             footer: str
         ):
+        """
+        Populate the email template with the given parameters.
+        """
         full = self.template.replace('{{header}}', header)
         full = full.replace('{{title}}', title)
         full = full.replace('{{content}}', content)
