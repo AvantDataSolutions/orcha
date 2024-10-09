@@ -67,6 +67,10 @@ def _keep_changed_transform_func(inputs: _diff_inputs, **kwargs) -> pd.DataFrame
     changed_rows = merged_df.loc[merged_df['_merge'] == 'left_only']
     diff_rows = changed_rows.drop(columns='_merge', axis=1)
 
+    # drop columns that have _y suffix and rename _x to original name
+    diff_rows = diff_rows.filter(regex='^(?!.*_y$)')
+    diff_rows = diff_rows.rename(columns=lambda x: x[:-2] if x.endswith('_x') else x)
+
     if add_updated:
         diff_rows[updated_name] = pd.Timestamp.utcnow()
 
