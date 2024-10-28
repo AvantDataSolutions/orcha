@@ -46,7 +46,6 @@ and optionally replaces NaT with None, typically useful for writing to SQL datab
 _diff_inputs = TypedDict('_diff_inputs', {
     'new_df': pd.DataFrame,
     'old_df': pd.DataFrame,
-    'diff_on': Optional[List[str]],
     'add_updated_col': Optional[bool],
     'updated_col_name': Optional[str]
 })
@@ -55,7 +54,6 @@ _diff_inputs = TypedDict('_diff_inputs', {
 def _keep_changed_transform_func(inputs: _diff_inputs, **kwargs) -> pd.DataFrame:
     new_df = inputs['new_df']
     old_df = inputs['old_df']
-    diff_on = inputs['diff_on']
     add_updated = inputs['add_updated_col']
     updated_name = inputs['updated_col_name']
     if updated_name is None:
@@ -63,18 +61,23 @@ def _keep_changed_transform_func(inputs: _diff_inputs, **kwargs) -> pd.DataFrame
     if updated_name in new_df.columns:
         raise ValueError(f'Updated col name "{updated_name}" already exists in new_df')
 
-    merged_df = new_df.merge(old_df, on=diff_on, indicator=True, how='left')
-    changed_rows = merged_df.loc[merged_df['_merge'] == 'left_only']
-    diff_rows = changed_rows.drop(columns='_merge', axis=1)
+    # Ensure both dataframes have the same columns
+    if set(new_df.columns) != set(old_df.columns):
+        raise ValueError("Dataframes do not have the same columns")
 
-    # drop columns that have _y suffix and rename _x to original name
-    diff_rows = diff_rows.filter(regex='^(?!.*_y$)')
-    diff_rows = diff_rows.rename(columns=lambda x: x[:-2] if x.endswith('_x') else x)
+    # Perform a full outer join on the key columns
+    merged_df = new_df.merge(old_df, how='outer', indicator=True, on=new_df.columns.tolist())
+
+    # Find the rows that exist only in one of the dataframes
+    diff_df = merged_df[merged_df['_merge'] == 'left_only']
+
+    # Drop the merge indicator column
+    diff_df = diff_df.drop(columns=['_merge'])
 
     if add_updated:
-        diff_rows[updated_name] = pd.Timestamp.utcnow()
+        diff_df[updated_name] = pd.Timestamp.now()
 
-    return diff_rows
+    return diff_df
 
 
 keep_changed_rows_transform = TransformBase[_diff_inputs](
