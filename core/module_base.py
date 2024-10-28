@@ -192,7 +192,7 @@ class DatabaseEntity(EntityBase):
     def define_table(
             self, schema_name: str | None,  table_name: str,
             columns: list[Column] = [], indexes: list[Index] = [],
-            build=True, match_definition=True
+            build=True, match_definition=True, match_indexes=True
         ):
         """
         Define a table with the given name, columns, and primary key.
@@ -209,7 +209,8 @@ class DatabaseEntity(EntityBase):
             indexes=indexes,
             engine=self.engine,
             build_table=build,
-            match_definition=match_definition
+            match_definition=match_definition,
+            match_indexes=match_indexes
         )
         self._tables.append(table)
         return table

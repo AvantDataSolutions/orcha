@@ -152,7 +152,7 @@ def sqlalchemy_build_table(table: Table, engine: Engine):
     table.create(engine, checkfirst=True)
 
 
-def check_definitions(table: Table, engine: Engine):
+def check_definitions(table: Table, engine: Engine, match_indexes: bool = True):
     """
     Loads the existing table from the database and checks that the
     provided table definition matches that in the database.
@@ -167,9 +167,10 @@ def check_definitions(table: Table, engine: Engine):
     if not table_match:
         raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
     # If the table exists, check that the indexes match
-    index_match, match_str = indexes_match(table, existing_table)
-    if not index_match:
-        raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
+    if match_indexes:
+        index_match, match_str = indexes_match(table, existing_table)
+        if not index_match:
+            raise Exception(f'Table "{table}" does not match the database table defintion: {match_str}')
     return True
 
 def indexes_match(table1, table2):
@@ -226,6 +227,7 @@ def create_table(
         engine: Engine,
         columns: list[Column], indexes: list[Index] = [],
         match_definition: bool = True,
+        match_indexes: bool = True,
         build_table: bool = True
     ):
     """
@@ -246,7 +248,7 @@ def create_table(
     if build_table:
         sqlalchemy_build_table(table, engine)
     if match_definition:
-        check_definitions(table, engine)
+        check_definitions(table, engine, match_indexes)
 
     return table
 
