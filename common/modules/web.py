@@ -169,12 +169,12 @@ class RestSink(SinkBase):
     request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
     sub_path: str | None = None
     query_params: dict | None = None
-    preprocess: Callable[[dict | str | pd.DataFrame], str] | None = None
+    preprocess: Callable[[list | dict | str | pd.DataFrame], str] | None = None
 
     @module_function
     def save(
             self,
-            request_data: dict | str | pd.DataFrame,
+            request_data: list | dict | str | pd.DataFrame,
             sub_path_override: str | None = None,
             query_params_merge: dict | None = None,
             request_kwargs: dict[str, Any] = {},
@@ -244,7 +244,7 @@ class RestSink(SinkBase):
                 raise Exception('A preprocess function is required for dataframes')
             elif isinstance(request_data, str):
                 data = request_data
-            elif isinstance(request_data, dict):
+            elif isinstance(request_data, dict) or isinstance(request_data, list):
                 data = json.dumps(request_data)
             else:
                 Exception('Unable to convert request_data to a string')
