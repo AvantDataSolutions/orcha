@@ -248,9 +248,9 @@ class ThreadHandler():
                             trigger_task_sset = trigger_task.schedule_sets[0]
 
                         if run_s_set.trigger_config.pass_config:
-                            # merge the run config with the trigger task config
-                            run_config_override = copy.deepcopy(run.config)
-                            run_config_override.update(trigger_task_sset.config)
+                            # update schedule config with override run config
+                            run_config_override = copy.deepcopy(trigger_task_sset.config)
+                            run_config_override.update(run.config)
                         else:
                             run_config_override = None
 
