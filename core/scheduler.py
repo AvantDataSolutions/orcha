@@ -660,6 +660,9 @@ class Scheduler:
                                 )
                                 continue
                         # print('Run due for task:', task.task_idk)
-                        run = task.schedule_run(schedule)
+                        run = task.schedule_run(
+                            schedule=schedule,
+                            schedule_by_id=self.scheduler_idk
+                        )
                         if run is None:
                             raise Exception('Failed to create run')

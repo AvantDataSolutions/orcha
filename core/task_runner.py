@@ -1,10 +1,11 @@
 
-import time
+import copy
 import threading
+import time
 import traceback
 
 from orcha.core import tasks
-from orcha.core.tasks import TaskItem, RunItem
+from orcha.core.tasks import RunItem, TaskItem
 from orcha.utils import kvdb
 from orcha.utils import threading as orcha_threading
 from orcha.utils.log import LogManager
@@ -240,15 +241,24 @@ class ThreadHandler():
                 if run.status == 'pending':
                     run_s_set = task.get_schedule_from_id(run.set_idf)
                     # Check if we have any trigger tasks to run
-                    if run_s_set and run_s_set.trigger_task:
-                        trigger_task = run_s_set.trigger_task[0]
-                        trigger_task_sset = run_s_set.trigger_task[1]
+                    if run_s_set and run_s_set.trigger_config:
+                        trigger_task = run_s_set.trigger_config.task
+                        trigger_task_sset = run_s_set.trigger_config.schedule
                         if not trigger_task_sset:
                             trigger_task_sset = trigger_task.schedule_sets[0]
+
+                        if run_s_set.trigger_config.pass_config:
+                            # merge the run config with the trigger task config
+                            run_config_override = copy.deepcopy(run.config)
+                            run_config_override.update(trigger_task_sset.config)
+                        else:
+                            run_config_override = None
+
                         new_run = trigger_task.trigger_run(
                             schedule=trigger_task_sset,
                             trigger_task=task,
-                            scheduled_time=run.scheduled_time
+                            scheduled_time=run.scheduled_time,
+                            run_config_override=run_config_override
                         )
                         if not new_run:
                             run.set_status('warn')

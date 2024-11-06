@@ -129,6 +129,8 @@ def _setup_sqlalchemy(
         task_idf = Column(String)
         set_idf = Column(String)
         run_type = Column(String)
+        created_time = Column(DateTime(timezone=False))
+        created_by = Column(String)
         scheduled_time = Column(DateTime(timezone=False))
         start_time = Column(DateTime(timezone=False))
         end_time = Column(DateTime(timezone=False))
@@ -168,17 +170,24 @@ TaskStatus = Literal['enabled', 'disabled', 'error', 'inactive', 'deleted']
 
 
 @dataclass
+class TriggerConfig():
+    task: TaskItem
+    schedule: ScheduleSet | None
+    pass_config: bool = True
+
+
+@dataclass
 class ScheduleSet():
     set_idk: str | None
     cron_schedule: str
     config: dict
-    trigger_task: tuple[TaskItem, ScheduleSet | None] | None = None
+    trigger_config: TriggerConfig | None = None
 
     def __init__(
             self,
             cron_schedule: str,
             config: dict,
-            trigger_task: tuple[TaskItem, ScheduleSet | None] | None = None
+            trigger_config: TriggerConfig | None = None
         ) -> None:
         """
         Creates a schedule set for a task with a cron schedule and config.
@@ -193,7 +202,7 @@ class ScheduleSet():
         self.set_idk = None
         self.cron_schedule = cron_schedule
         self.config = config
-        self.trigger_task = trigger_task
+        self.trigger_config = trigger_config
 
     @staticmethod
     def list_to_dict(schedule_sets: list[ScheduleSet]) -> list[dict]:
@@ -208,7 +217,7 @@ class ScheduleSet():
             set_idk: str,
             cron_schedule: str,
             config: dict,
-            trigger_task: tuple[TaskItem, ScheduleSet | None] | None = None
+            trigger_config: TriggerConfig | None = None
         ) -> ScheduleSet:
         """
         Creates a schedule set for a task with a cron schedule and config.
@@ -218,7 +227,7 @@ class ScheduleSet():
         s_set = ScheduleSet(
             cron_schedule=cron_schedule,
             config=config,
-            trigger_task=trigger_task
+            trigger_config=trigger_config
         )
         s_set.set_idk = set_idk
         return s_set
@@ -244,14 +253,19 @@ class ScheduleSet():
             config=data['config'],
         )
         if data.get('trigger_task', None) is None:
-            s_set.trigger_task = None
+            s_set.trigger_config = None
         else:
             task_item = TaskItem.get(data['trigger_task']['task_id'])
             if task_item is None:
                 raise Exception('Task not found for trigger task')
-            s_set.trigger_task = (
-                task_item,
-                task_item.get_schedule_from_id(data['trigger_task']['set_id'])
+            # s_set.trigger_task = (
+            #     task_item,
+            #     task_item.get_schedule_from_id(data['trigger_task']['set_id'])
+            # )
+            s_set.trigger_config = TriggerConfig(
+                task=task_item,
+                schedule=task_item.get_schedule_from_id(data['trigger_task']['set_id']),
+                pass_config=data['trigger_task'].get('pass_config', True)
             )
         return s_set
 
@@ -260,15 +274,16 @@ class ScheduleSet():
         Converts the schedule set to a dictionary, commonly used
         when saving to the database.
         """
-        if not self.trigger_task:
+        if not self.trigger_config:
             trigger_task_json = None
         else:
             set_id = None
-            if self.trigger_task[1] is not None:
-                set_id = self.trigger_task[1].set_idk
+            if self.trigger_config.schedule is not None:
+                set_id = self.trigger_config.schedule.set_idk
             trigger_task_json = {
-                'task_id': self.trigger_task[0].task_idk,
-                'set_id': set_id
+                'task_id': self.trigger_config.task.task_idk,
+                'set_id': set_id,
+                'pass_config': self.trigger_config.pass_config
             }
         return {
             'set_idk': self.set_idk,
@@ -429,7 +444,7 @@ class TaskItem():
                 set_idk=f'{task_idk}_{schedule.cron_schedule}',
                 cron_schedule=schedule.cron_schedule,
                 config=schedule.config,
-                trigger_task=schedule.trigger_task
+                trigger_config=schedule.trigger_config
             ))
 
         update_needed = False
@@ -654,6 +669,7 @@ class TaskItem():
 
     def schedule_run(
             self,
+            schedule_by_id: str,
             schedule: ScheduleSet,
             force_run: bool = False
         ) -> RunItem | None:
@@ -669,7 +685,8 @@ class TaskItem():
                 task=self,
                 run_type='scheduled',
                 scheduled_time=self.get_last_scheduled(schedule),
-                schedule=schedule
+                schedule=schedule,
+                created_by=schedule_by_id
             )
         else:
             return None
@@ -679,7 +696,8 @@ class TaskItem():
             schedule: ScheduleSet,
             trigger_task: TaskItem,
             scheduled_time: dt,
-            force_run: bool = False
+            force_run: bool = False,
+            run_config_override: dict | None = None
         ) -> RunItem | None:
         """
         Triggers a run for the task and schedule set and returns the run instance.
@@ -695,13 +713,10 @@ class TaskItem():
                 task=self,
                 run_type='triggered',
                 scheduled_time=scheduled_time,
-                schedule=schedule
+                schedule=schedule,
+                created_by=trigger_task.task_idk,
+                config_override=run_config_override
             )
-
-            run.set_output({
-                'trigger_task': trigger_task.task_idk
-            }, merge=True)
-
             return run
         else:
             return None
@@ -820,6 +835,8 @@ class RunItem():
         - task_idf: The task id for this run
         - set_idf: The schedule set id for this run
         - run_type: The type of run (scheduled, manual, retry)
+        - created_time: The time the run was created
+        - created_by: the user/schedule/task that created the run
         - scheduled_time: The time the run was scheduled to run
         - start_time: The time the run started
         - end_time: The time the run ended
@@ -835,6 +852,8 @@ class RunItem():
     task_idf: str
     set_idf: str
     run_type: str
+    created_time: dt
+    created_by: str
     scheduled_time: dt
     start_time: dt | None
     end_time: dt | None
@@ -878,6 +897,8 @@ class RunItem():
             task_idf = record.task_idf, # type: ignore
             set_idf = record.set_idf, # type: ignore
             run_type = record.run_type, # type: ignore
+            created_time = record.created_time, # type: ignore
+            created_by = record.created_by, # type: ignore
             scheduled_time = record.scheduled_time, # type: ignore
             start_time = record.start_time, # type: ignore
             end_time = record.end_time, # type: ignore
@@ -891,7 +912,8 @@ class RunItem():
     @staticmethod
     def create(
             task: TaskItem, run_type: RunType,
-            schedule: ScheduleSet, scheduled_time: dt
+            schedule: ScheduleSet, scheduled_time: dt,
+            created_by: str, config_override: dict | None = None
         ) -> RunItem:
         """
         Creates a new run instance for a task with a new uuid and
@@ -910,11 +932,13 @@ class RunItem():
             task_idf = task.task_idk,
             set_idf = schedule.set_idk,
             run_type = run_type,
+            created_time = current_time(),
+            created_by = created_by,
             scheduled_time = scheduled_time,
             start_time = None,
             end_time = None,
             last_active = None,
-            config = schedule.config,
+            config = config_override or schedule.config,
             status = 'unstarted',
             progress = 'queued',
             output = None
@@ -1100,17 +1124,21 @@ class RunItem():
                 update_dt = current_time()
                 updated_rows = session.execute(sql('''
                     INSERT INTO orcha.runs (
-                        run_idk, update_timestamp, task_idf, set_idf, run_type, scheduled_time,
-                        start_time, end_time, last_active, config, status, progress, output
+                        run_idk, update_timestamp, task_idf, set_idf, run_type,
+                        created_time, created_by, scheduled_time, start_time, end_time,
+                        last_active, config, status, progress, output
                     ) VALUES (
-                        :run_idk, :update_timestamp, :task_idf, :set_idf, :run_type, :scheduled_time,
-                        :start_time, :end_time, :last_active, :config, :status, :progress, :output
+                        :run_idk, :update_timestamp, :task_idf, :set_idf, :run_type,
+                        :created_time, :created_by, :scheduled_time, :start_time, :end_time,
+                        :last_active, :config, :status, :progress, :output
                     )
                     ON CONFLICT (run_idk) DO UPDATE SET
                         update_timestamp = EXCLUDED.update_timestamp,
                         task_idf = EXCLUDED.task_idf,
                         set_idf = EXCLUDED.set_idf,
                         run_type = EXCLUDED.run_type,
+                        created_time = EXCLUDED.created_time,
+                        created_by = EXCLUDED.created_by,
                         scheduled_time = EXCLUDED.scheduled_time,
                         start_time = EXCLUDED.start_time,
                         end_time = EXCLUDED.end_time,
@@ -1128,6 +1156,8 @@ class RunItem():
                     'task_idf': self._task.task_idk,
                     'set_idf': self.set_idf,
                     'run_type': self.run_type,
+                    'created_time': self.created_time,
+                    'created_by': self.created_by,
                     'scheduled_time': self.scheduled_time,
                     'start_time': self.start_time,
                     'end_time': self.end_time,
