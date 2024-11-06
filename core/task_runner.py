@@ -266,6 +266,11 @@ class ThreadHandler():
                                 {'message':'Trigger task failed to create run'},
                                 merge=True
                             )
+                        else:
+                            run.set_output(
+                                {'triggered_run_id': new_run.run_idk},
+                                merge=True
+                            )
                     # The trigger task may have set the run as warn, which is ok
                     # and we can have the 'set success' call to quietly do nothing
                     run.set_status('success', raise_on_backwards=False)
