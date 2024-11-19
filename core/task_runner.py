@@ -5,7 +5,7 @@ import time
 import traceback
 
 from orcha.core import tasks
-from orcha.core.tasks import RunItem, TaskItem
+from orcha.core.tasks import RunItem, ScheduleSet, TaskItem
 from orcha.utils import kvdb
 from orcha.utils import threading as orcha_threading
 from orcha.utils.log import LogManager
@@ -17,6 +17,32 @@ from orcha.utils.log import LogManager
 BASE_THREAD_GROUP = 'base_thread'
 
 runner_log = LogManager('task_runner')
+
+def _create_trigger_config(triggering_run: RunItem, triggering_set: ScheduleSet):
+    """
+    Helper function to create a trigger config for a task
+    """
+    # If we don't have a trigger config then nothing to trigger
+    if not triggering_set.trigger_config:
+        return None
+
+    trigger_sset_config = {}
+    if triggering_set.trigger_config.schedule:
+        trigger_sset_config = triggering_set.trigger_config.schedule.config
+
+    if triggering_set.trigger_config.pass_config:
+        # update schedule config with override run config
+        # doing a deepcopy to not modify the original
+        # config overrides
+        current_config = copy.deepcopy(trigger_sset_config)
+        current_config.update(triggering_run.config)
+    else:
+        # if we're not passing the config then just use the
+        # trigger config as is
+        current_config = trigger_sset_config
+
+    return current_config
+
 
 
 class ThreadHandler():
@@ -239,38 +265,30 @@ class ThreadHandler():
             if run.progress == 'running':
                 # if nothing else has set the status then we can set it as success
                 if run.status == 'pending':
-                    run_s_set = task.get_schedule_from_id(run.set_idf)
-                    # Check if we have any trigger tasks to run
-                    if run_s_set and run_s_set.trigger_config:
-                        trigger_task = run_s_set.trigger_config.task
-                        trigger_task_sset = run_s_set.trigger_config.schedule
-                        if not trigger_task_sset:
-                            trigger_task_sset = trigger_task.schedule_sets[0]
-
-                        if run_s_set.trigger_config.pass_config:
-                            # update schedule config with override run config
-                            run_config_override = copy.deepcopy(trigger_task_sset.config)
-                            run_config_override.update(run.config)
-                        else:
-                            run_config_override = None
-
-                        new_run = trigger_task.trigger_run(
-                            schedule=trigger_task_sset,
-                            trigger_task=task,
-                            scheduled_time=run.scheduled_time,
-                            run_config_override=run_config_override
-                        )
-                        if not new_run:
-                            run.set_status('warn')
-                            run.set_output(
-                                {'message':'Trigger task failed to create run'},
-                                merge=True
+                    # If we don't have a schedule set then there isn't
+                    # anything to trigger so we can skip this bit
+                    if run.set_idf:
+                        run_s_set = task.get_schedule_from_id(run.set_idf)
+                        # Check if we have any trigger tasks to run
+                        if run_s_set and run_s_set.trigger_config:
+                            trigger_task = run_s_set.trigger_config.task
+                            run_config = _create_trigger_config(run, run_s_set)
+                            new_run = trigger_task.trigger_run(
+                                trigger_task=task,
+                                scheduled_time=run.scheduled_time,
+                                run_config=run_config
                             )
-                        else:
-                            run.set_output(
-                                {'triggered_run_id': new_run.run_idk},
-                                merge=True
-                            )
+                            if not new_run:
+                                run.set_status('warn')
+                                run.set_output(
+                                    {'message':'Trigger task failed to create run'},
+                                    merge=True
+                                )
+                            else:
+                                run.set_output(
+                                    {'triggered_run_id': new_run.run_idk},
+                                    merge=True
+                                )
                     # The trigger task may have set the run as warn, which is ok
                     # and we can have the 'set success' call to quietly do nothing
                     run.set_status('success', raise_on_backwards=False)

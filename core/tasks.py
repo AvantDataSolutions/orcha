@@ -645,12 +645,19 @@ class TaskItem():
         runs = sorted(runs, key=lambda x: x.scheduled_time, reverse=True)
         return runs[:count]
 
-    def get_next_scheduled_time(self, schedule: ScheduleSet | None = None) -> dt:
+    def get_next_scheduled_time(self, schedule: ScheduleSet | None = None) -> dt | None:
         """
         Returns the next scheduled time for the task. If no schedule is
         provided then the first schedule set is used.
+        #### Args:
+        - schedule: The schedule set to get the next scheduled time for. If None
+            then the first schedule set is used.
+        #### Returns:
+        - The next scheduled time for the task or None if no schedule sets are available.
         """
         if schedule is None:
+            if len(self.schedule_sets) == 0:
+                return None
             schedule = self.schedule_sets[0]
         cron_schedule = schedule.cron_schedule
         return croniter(cron_schedule, current_time()).get_next(dt)
@@ -701,11 +708,10 @@ class TaskItem():
 
     def trigger_run(
             self,
-            schedule: ScheduleSet,
             trigger_task: TaskItem,
             scheduled_time: dt,
             force_run: bool = False,
-            run_config_override: dict | None = None
+            run_config: dict | None = None
         ) -> RunItem | None:
         """
         Triggers a run for the task and schedule set and returns the run instance.
@@ -715,15 +721,17 @@ class TaskItem():
         - trigger_task: The task that triggered this run
         - scheduled_time: The time the run was scheduled to run
         - force_run: If True, the run will be created even if the task is not enabled
+        - run_config: If provided, this config will override any keys already
+            set in the schedule set config
         """
         if self.status == 'enabled' or force_run:
             run = RunItem.create(
                 task=self,
                 run_type='triggered',
                 scheduled_time=scheduled_time,
-                schedule=schedule,
+                schedule=None,
                 created_by=trigger_task.task_idk,
-                config_override=run_config_override
+                config_override=run_config
             )
             return run
         else:
@@ -858,7 +866,7 @@ class RunItem():
     update_timestamp: dt
     run_idk: str
     task_idf: str
-    set_idf: str
+    set_idf: str | None
     run_type: str
     created_time: dt
     created_by: str
@@ -920,25 +928,50 @@ class RunItem():
     @staticmethod
     def create(
             task: TaskItem, run_type: RunType,
-            schedule: ScheduleSet, scheduled_time: dt,
+            schedule: ScheduleSet | None, scheduled_time: dt,
             created_by: str, config_override: dict | None = None
         ) -> RunItem:
         """
         Creates a new run instance for a task with a new uuid and
         'new run' defaults in the database. This is a separate function to the
         __init__ to keep creating database entries separate from instanciating.
+        Manual and triggered runs can be created without a schedule set.
         """
         confirm_initialised()
 
-        if schedule.set_idk is None:
-            raise Exception('Schedule set idk not set')
+        sset_id = None
+        run_config = {}
+
+        # Scheduled runs need to handle the schedule set whereas
+        # manual and triggered runs have no schedule set and use the
+        # config_override only
+        if run_type == 'scheduled' or run_type == 'retry':
+            if schedule is None:
+                raise Exception('Scheduled run requires a schedule set')
+            sset_id = schedule.set_idk
+            # use the override config if provided
+            run_config = config_override or schedule.config
+        elif run_type == 'manual' or run_type == 'triggered':
+            # if we have a schedule for these runs then use the config or override
+            if schedule is not None:
+                sset_id = schedule.set_idk
+                run_config = config_override or schedule.config
+            elif config_override is not None:
+                run_config = config_override
+            else:
+                raise Exception(
+                    'Manual/triggered run requires a config override or schedule set'
+                )
+        else:
+            raise Exception('Invalid run type')
+
 
         item = RunItem(
             _task = task,
             update_timestamp = current_time(),
             run_idk = str(uuid4()),
             task_idf = task.task_idk,
-            set_idf = schedule.set_idk,
+            set_idf = sset_id,
             run_type = run_type,
             created_time = current_time(),
             created_by = created_by,
@@ -946,7 +979,7 @@ class RunItem():
             start_time = None,
             end_time = None,
             last_active = None,
-            config = config_override or schedule.config,
+            config = run_config,
             status = 'unstarted',
             progress = 'queued',
             output = None
