@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from croniter import croniter
 from sqlalchemy import Column, DateTime, String
-from sqlalchemy.dialects.postgresql import JSON as PG_JSON
+from sqlalchemy.dialects.postgresql import insert, JSON as PG_JSON
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Session, sessionmaker
@@ -526,19 +526,27 @@ class TaskItem():
         if the version has been updated elsewhere.
         """
         with s_maker.begin() as session:
-            session.merge(TaskRecord(
-                task_idk = self.task_idk,
-                version = self.version,
-                task_metadata = self.task_metadata,
-                task_tags = self.task_tags,
-                name = self.name,
-                description = self.description,
-                schedule_sets = ScheduleSet.list_to_dict(self.schedule_sets),
-                thread_group = self.thread_group,
-                last_active = self.last_active,
-                status = self.status,
-                notes = self.notes
-            ))
+            task_record = {
+                'task_idk': self.task_idk,
+                'version': self.version,
+                'task_metadata': self.task_metadata,
+                'task_tags': self.task_tags,
+                'name': self.name,
+                'description': self.description,
+                'schedule_sets': ScheduleSet.list_to_dict(self.schedule_sets),
+                'thread_group': self.thread_group,
+                'last_active': self.last_active,
+                'status': self.status,
+                'notes': self.notes
+            }
+
+            insert_stmt = insert(TaskRecord).values(task_record)
+            update_stmt = insert_stmt.on_conflict_do_update(
+                index_elements=['task_idk', 'version'],
+                set_=task_record
+            )
+
+            session.execute(update_stmt)
 
     def set_status(self, status: TaskStatus, notes: str) -> None:
         """
