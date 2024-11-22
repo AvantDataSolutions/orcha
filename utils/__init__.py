@@ -1,4 +1,7 @@
-from typing import Any
+import ast
+import inspect
+from typing import Any, Callable
+
 from pydantic import BaseModel
 
 
@@ -92,3 +95,57 @@ class http_utils():
         else:
             ip = request.headers.getlist("X-Forwarded-For")[0]
         return ip
+
+
+def get_config_keys(fnc: Callable) -> dict:
+    """
+    Inspects a function and returns a dictionary of all config keys used in the function.
+    #### Parameters
+    - fnc: The function to inspect
+    #### Returns
+    - dict: A dictionary of all config keys used in the function,
+    with the key as the dictionary key and the default value as the dictionary value
+    """
+    source = inspect.getsource(fnc)
+    tree = ast.parse(source)
+
+    class ConfigKeyVisitor(ast.NodeVisitor):
+        def __init__(self):
+            self.keys = set()
+            self.defaults = {}
+
+        def visit_Subscript(self, node):
+            if isinstance(node.value, ast.Name) and node.value.id == 'config':
+                if isinstance(node.slice, ast.Constant):  # For Python 3.8+
+                    self.keys.add(node.slice.value)
+            self.generic_visit(node)
+
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Attribute) and node.func.attr == 'get':
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == 'config':
+                    if len(node.args) > 0:
+                        key = None
+                        if isinstance(node.args[0], ast.Constant):  # For Python 3.8+
+                            key = node.args[0].value
+                        elif isinstance(node.args[0], ast.Str):  # For older versions
+                            key = node.args[0].s
+
+                        if key:
+                            self.keys.add(key)
+                            if len(node.args) > 1:
+                                default_value = node.args[1]
+                                if isinstance(default_value, ast.Constant):  # For Python 3.8+
+                                    self.defaults[key] = default_value.value
+            self.generic_visit(node)
+
+    visitor = ConfigKeyVisitor()
+    visitor.visit(tree)
+
+    values = {}
+    for key in visitor.keys:
+        if key in visitor.defaults:
+            values[key] = visitor.defaults[key]
+        else:
+            values[key] = None
+
+    return values

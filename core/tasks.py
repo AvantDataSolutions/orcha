@@ -21,6 +21,7 @@ from sqlalchemy.sql import text as sql
 from orcha import current_time
 from orcha.core import monitors
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
+from orcha.utils import get_config_keys
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 from orcha.utils.sqlalchemy import (
@@ -120,6 +121,7 @@ def _setup_sqlalchemy(
         last_active = Column(DateTime(timezone=False))
         status = Column(String)
         notes = Column(String)
+        task_config = Column(PG_JSON)
 
     class RunRecord(Base):
         __tablename__ = 'runs'
@@ -332,7 +334,8 @@ class TaskItem():
             self, task_idk: str, version: dt, task_metadata: dict, name: str,
             description: str, schedule_sets: list[ScheduleSet] | list[dict],
             thread_group: str, last_active: dt, status: TaskStatus,
-            task_tags: list[str], notes: str | None = None
+            task_tags: list[str], notes: str | None = None,
+            task_config: dict = {}
         ) -> None:
 
         confirm_initialised()
@@ -360,6 +363,8 @@ class TaskItem():
         self.last_active = last_active
         self.status = status
         self.notes = notes
+        self.task_config = task_config
+
 
     @staticmethod
     def get_all() -> list[TaskItem]:
@@ -486,6 +491,8 @@ class TaskItem():
         )
 
         task.task_function = task_function # type: ignore
+        print(get_config_keys(task_function))
+        task.task_config = get_config_keys(task_function)
 
         for monitor in task_monitors:
             monitor.add_task(task)
@@ -537,7 +544,8 @@ class TaskItem():
                 'thread_group': self.thread_group,
                 'last_active': self.last_active,
                 'status': self.status,
-                'notes': self.notes
+                'notes': self.notes,
+                'task_config': self.task_config
             }
 
             insert_stmt = insert(TaskRecord).values(task_record)
