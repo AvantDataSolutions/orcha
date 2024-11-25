@@ -14,10 +14,16 @@ class FileSystemEntity(EntityBase, ABC):
     Generic entity class to handle file operations for reading and writing files
     to a file system. Abstract class to be implemented by specific file system entities.
     """
-    def __init__(self, folder: str, user_name: str, password: str):
+    def __init__(self,
+                 module_idk: str, description: str,
+                 folder: str, user_name: str, password: str):
+        super().__init__(
+            module_idk=module_idk,
+            description=description,
+            user_name=user_name,
+            password=password
+        )
         self.folder = folder
-        self.user_name = user_name
-        self.password = password
 
     @abstractmethod
     def to_csv(self, file_name: str, df: pd.DataFrame):
@@ -53,25 +59,33 @@ class SmbEntity(FileSystemEntity):
     An entity class to handle the SMB connection and file operations
     for reading and writing files to an SMB share
     """
-    def __init__(self, host: str, share: str, folder: str, username: str, password: str):
+    def __init__(self,
+            module_idk: str, description: str,
+            host: str, share: str, folder: str,
+            user_name: str, password: str
+        ):
         """
         Creates an instance of the SMB entity with appropriate credentials
         #### Parameters
         - host (str): IP address or hostname of the SMB server
         - share (str): Share name on the SMB server
         - folder (str): Folder path within the share
-        - username (str): Username for authentication
+        - user_name (str): user_name for authentication
         - password (str): Password for authentication
         """
-        super().__init__(folder, username, password)
+        super().__init__(
+            module_idk=module_idk,
+            description=description,
+            folder=folder,
+            user_name=user_name,
+            password=password
+        )
         self.host = host
         self.share = share
-        self.username = username
-        self.password = password
         self.client = SMBConnection(
-            username=username,
+            username=user_name,
             password=password,
-            my_name=username,
+            my_name=user_name,
             remote_name=host,
             is_direct_tcp=True
         )
@@ -88,7 +102,7 @@ class SmbEntity(FileSystemEntity):
             if not self._is_connected:
                 raise ConnectionError(f'Connection failed for {self.host}')
         if not self.client.has_authenticated:
-            raise ConnectionError(f'Authentication failed for {self.username}')
+            raise ConnectionError(f'Authentication failed for {self.user_name}')
         with io.BytesIO() as file_obj:
             try:
                 if file_format == 'csv':
@@ -133,7 +147,7 @@ class SmbEntity(FileSystemEntity):
             if not self._is_connected:
                 raise ConnectionError(f'Connection failed for {self.host}')
         if not self.client.has_authenticated:
-            raise ConnectionError(f"Authentication failed for {self.username}")
+            raise ConnectionError(f"Authentication failed for {self.user_name}")
         with io.BytesIO() as file_obj:
             try:
                 self.client.retrieveFile(self.share, file_path, file_obj)
