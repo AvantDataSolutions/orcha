@@ -36,26 +36,75 @@ class Config:
         self.orcha_ui_base_url = orcha_ui_base_url
         self.scope = scope
 
-@dataclass
+
 class MqueueConfig:
     """
     This class is used to store config for the mqueue
     if using alerts and monitors.
-    #### Attributes
-    - broker_host: The host of the mqueue broker.
-    - broker_bind_ip: The ip to bind the broker to.
-    - broker_port: The port to bind the broker to.
-    - consumer_host: The host of the mqueue consumer.
-    - consumer_bind_ip: The ip to bind the consumer to.
-    - consumer_port: The port to bind the consumer to.
+    #### Notes
+    - If the broker and consumer are on the same ip, then both Broker and Consumer \
+        must be specified in the config as they rely on the same FastAPI app.
+    - All default ports are set to 5800 and bind_ips are set to '0.0.0.0'. If running \
+        outside of a secure environment, bind_ip should be set appropriately.
+    #### Parameters
+    - producer: The config for the producer. If not provided then no messages will be sent.
+    - broker: The config for the broker. If not provided then the broker will not be started.
+    - consumer: The config for the consumer. If not provided then the consumer will not be started.
     """
-    broker_host: str
-    broker_bind_ip: str
-    broker_port: int
-    consumer_host: str
-    consumer_bind_ip: str
-    consumer_port: int
-    start_broker: bool
+
+    @dataclass
+    class BrokerConfig:
+        """
+        This class is used to store the config for the broker.
+        #### Parameters
+        - broker_bind_ip: The ip to bind the broker to.
+        - broker_port: The port to bind the broker to.
+        """
+        broker_bind_ip: str = '0.0.0.0'
+        broker_port: int = 5800
+
+    @dataclass
+    class ConsumerConfig:
+        """
+        This class is used to store the config for the consumer.
+        #### Parameters
+        - consumer_host: The host of the mqueue consumer.
+        - consumer_bind_ip: The ip to bind the consumer to.
+        - consumer_port: The port to bind the consumer to.
+        - broker_host: The host of the mqueue broker.
+        - broker_port: The port of the mqueue broker.
+        """
+        consumer_host: str
+        broker_host: str
+        broker_port: int = 5800
+        consumer_bind_ip: str = '0.0.0.0'
+        consumer_port: int = 5800
+
+    @dataclass
+    class ProducerConfig:
+        """
+        This class is used to store the config for the producer.
+        #### Parameters
+        - producer_host: The host of the mqueue producer.
+        - producer_port: The port of the mqueue producer.
+        """
+        broker_host: str
+        broker_port: int = 5800
+
+    def __init__(
+        self,
+        broker: BrokerConfig | None = None,
+        consumer: ConsumerConfig | None = None
+    ):
+        self.broker = broker
+        self.consumer = consumer
+        if consumer:
+            self.producer = MqueueConfig.ProducerConfig(
+                broker_host=consumer.broker_host,
+                broker_port=consumer.broker_port
+            )
+        else:
+            self.producer = None
 
 
 MONITOR_CONFIG: Config | None = None

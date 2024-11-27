@@ -1,7 +1,9 @@
 import hashlib
 import json
+import random
 import threading
 from datetime import datetime as dt
+from time import sleep
 from typing import Any, Callable, Generic, Protocol, TypeVar
 
 import requests
@@ -13,6 +15,7 @@ from sqlalchemy.sql import text as sql
 
 from orcha import current_time
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
+from orcha.utils.threading import run_function_with_timeout
 
 
 class Status:
@@ -120,6 +123,15 @@ class FastApiApp():
         This function should be called before running the app and
         ensures that the app is setup with the correct host and port.
         """
+        # make sure the inputs are valid
+        if not isinstance(bind_ip, str):
+            raise Exception('bind_ip must be a string')
+        if not isinstance(bind_port, int):
+            raise Exception('bind_port must be an integer')
+        if bind_port < 1 or bind_port > 65535:
+            raise Exception('bind_port must be between 1 and 65535')
+        if len(bind_ip.split('.')) != 4:
+            raise Exception(f'bind_ip must have 4 octets: current {len(bind_ip.split("."))}')
         # if we've already setup the FastAPI app, then make sure
         # we're trying to start it with the same details as expected
         if FastApiApp.bind_ip is not None:
@@ -226,7 +238,8 @@ class Consumer():
     def setup(
             broker_host: str, broker_port: int,
             consumer_host: str,
-            consumer_port = 5800
+            consumer_port = 5800,
+            consumer_bind_ip = '0.0.0.0'
         ):
         """
         Sets up the Consumer class with the broker and consumer host and port.
@@ -235,13 +248,17 @@ class Consumer():
         Consumer.broker_port = broker_port
         Consumer.consumer_host = consumer_host
         Consumer.consumer_port = consumer_port
+        Consumer.consumer_bind_ip = consumer_bind_ip
 
     @staticmethod
-    def run(consumer_bind_ip = '0.0.0.0', consumer_port = 5800):
+    def run():
         """
         Runs the FastAPI app in a separate thread to avoid blocking.
         """
-        FastApiApp.setup(consumer_bind_ip, consumer_port)
+        if not Consumer.consumer_host or not Consumer.consumer_port:
+            raise Exception('Consumer setup() must be called before run()')
+
+        FastApiApp.setup(Consumer.consumer_bind_ip, Consumer.consumer_port)
         Consumer.consumer_thread = FastApiApp.run(in_thread=True)
 
     @staticmethod
@@ -334,6 +351,31 @@ class Consumer():
                 channel=c.name, consumer_name=consumer_name,
                 url=f'{Consumer.consumer_host}:{Consumer.consumer_port}/receive-message'
             )
+
+            # Before registering the consumer, we need to make sure the broker is up
+            # this will allow for cases where the consumer/producers
+            # are started before the broker and gives the broker time to start
+            wait_count = 0
+            max_count = 10
+            while wait_count <= max_count:
+                def _ping_broker():
+                    response = requests.get(
+                        url=f'{Consumer.broker_host}:{Consumer.broker_port}/ping',
+                        timeout=30
+                    )
+                    return response
+                try:
+                    run_function_with_timeout(30, 'Broker ping failed', _ping_broker)
+                    break
+                except Exception:
+                    # Sleeping here because if there is no broker the get() immediately
+                    # fails so this will wait a minimum of 10 * max_count seconds
+                    sleep(10)
+                    wait_count += 1
+                    continue
+
+            if wait_count >= max_count:
+                return Status.RegisterConsumer.BROKER_PING_FAIL
             response = requests.post(
                 url=f'{Consumer.broker_host}:{Consumer.broker_port}/register-consumer',
                 json=data.model_dump(),
@@ -386,16 +428,26 @@ class Producer():
         Sends a message to the message queue on the provided channel.
         The message must be of the correct type for the channel.
         """
+        if not self.broker_host or not self.broker_port:
+            raise Exception('Producer not setup with broker host and port')
         # make sure the message is of the correct type for the channel
         if not isinstance(message, channel.message_type):
             raise Exception('Message type does not match channel message type')
 
         data = SendMessageInput(channel=channel.name, message=message.to_json())
-        response = requests.post(
-            url=f'{self.broker_host}:{self.broker_port}/send-message',
-            json=data.model_dump(),
-            timeout=10
-        )
+
+        def _do_send():
+            response = requests.post(
+                url=f'{self.broker_host}:{self.broker_port}/send-message',
+                json=data.model_dump(),
+                timeout=10
+            )
+            return response
+
+        response = _do_send()
+        if response.status_code != 200:
+            sleep(3)
+            response = _do_send()
 
         if response.status_code == 200:
             return response.text.replace('"', '')
@@ -496,6 +548,15 @@ class Broker():
             raise Exception('Broker not setup')
         FastApiApp.setup(bind_ip, bind_port)
         FastApiApp.run(in_thread=True)
+
+    # A ping endpoint to check if the broker is running
+    @staticmethod
+    @_fastapi_app.get('/ping')
+    def ping():
+        """
+        A ping endpoint to check if the broker is running.
+        """
+        return 'pong'
 
     @staticmethod
     @_fastapi_app.post('/register-consumer')

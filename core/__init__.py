@@ -30,10 +30,9 @@ def initialise(
         if monitor_config.orcha_ui_base_url:
             monitor_config.orcha_ui_base_url = monitor_config.orcha_ui_base_url.strip('/')
         if monitor_config.mqueue_config:
-            monitor_config.mqueue_config.broker_host = monitor_config.mqueue_config.broker_host.strip('/')
-            monitor_config.mqueue_config.consumer_host = monitor_config.mqueue_config.consumer_host.strip('/')
-        if monitor_config.mqueue_config:
-            if monitor_config.mqueue_config.broker_bind_ip:
+            if monitor_config.mqueue_config.broker:
+                broker_ip = monitor_config.mqueue_config.broker.broker_bind_ip.strip('/')
+                broker_port = monitor_config.mqueue_config.broker.broker_port
                 Broker.setup(
                     mqueue_pg_host=orcha_server,
                     mqeue_pg_port=5432,
@@ -41,19 +40,27 @@ def initialise(
                     mqueue_pg_user=orcha_user,
                     mqueue_pg_pass=orcha_pass,
                 )
-                if monitor_config.mqueue_config.start_broker:
-                    Broker.run(
-                        bind_ip=monitor_config.mqueue_config.broker_bind_ip,
-                        bind_port=monitor_config.mqueue_config.broker_port,
-                    )
+                Broker.run(
+                    bind_ip=broker_ip,
+                    bind_port=broker_port
+                )
+            if monitor_config.mqueue_config.consumer:
+                consumer_ip = monitor_config.mqueue_config.consumer.consumer_bind_ip.strip('/')
+                consumer_port = monitor_config.mqueue_config.consumer.consumer_port
+                consumer_host = monitor_config.mqueue_config.consumer.consumer_host.strip('/')
+                consumer_broker_host = monitor_config.mqueue_config.consumer.broker_host.strip('/')
+                consumer_broker_port = monitor_config.mqueue_config.consumer.broker_port
             Consumer.setup(
-                broker_host=monitor_config.mqueue_config.broker_host,
-                broker_port=monitor_config.mqueue_config.broker_port,
-                consumer_host=monitor_config.mqueue_config.consumer_host,
-                consumer_port=monitor_config.mqueue_config.consumer_port
+                broker_host=consumer_broker_host,
+                broker_port=consumer_broker_port,
+                consumer_host=consumer_host,
+                consumer_port=consumer_port,
+                consumer_bind_ip=consumer_ip
             )
-            Producer.default_broker_host = monitor_config.mqueue_config.broker_host
-            Producer.default_broker_port = monitor_config.mqueue_config.broker_port
+            if monitor_config.mqueue_config.producer:
+                Producer.default_broker_host = monitor_config.mqueue_config.producer.broker_host
+                Producer.default_broker_port = monitor_config.mqueue_config.producer.broker_port
+
         if not Consumer.broker_host:
             raise Exception('mqueue must be configured if using monitors and alerts')
 
