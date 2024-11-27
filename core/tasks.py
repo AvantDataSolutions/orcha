@@ -491,7 +491,6 @@ class TaskItem():
         )
 
         task.task_function = task_function # type: ignore
-        print(get_config_keys(task_function))
         task.task_config = get_config_keys(task_function)
 
         for monitor in task_monitors:
