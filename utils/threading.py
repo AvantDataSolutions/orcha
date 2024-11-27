@@ -4,13 +4,13 @@ import threading
 
 _function_exceptions: dict[str, Exception] = {}
 _timeout_remainders: dict[str, int] = {}
-
+_manually_expired_int = -9999999
 
 def expire_timeout(thread_name):
     """
     Expires the timeout remainder for a thread.
     """
-    _timeout_remainders[thread_name] = 0
+    _timeout_remainders[thread_name] = _manually_expired_int
 
 
 def store_exception(exec: Exception):
@@ -86,6 +86,9 @@ def run_function_with_timeout(timeout, message, func, thread_name = None, *args,
     while thread.is_alive() and _timeout_remainders[t_name] > 0:
         thread.join(timeout_chunk)
         _timeout_remainders[t_name] -= timeout_chunk
+
+    if _timeout_remainders[t_name] == _manually_expired_int:
+        raise Exception(message + ' (manually expired)')
 
     if thread.is_alive():
         raise Exception(message)
