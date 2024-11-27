@@ -148,6 +148,28 @@ class MqueueChannels():
     )
 
 
+    class _SchedulerStartedMessage:
+        def __init__(self, scheduler_id: str):
+            self.scheduler_id = scheduler_id
+
+        def to_json(self) -> str:
+            return json.dumps({
+                "scheduler_id": self.scheduler_id
+            })
+
+        @classmethod
+        def from_json(cls, json_str: str):
+            data = json.loads(json_str)
+            return cls(
+                scheduler_id=data["scheduler_id"]
+            )
+
+    scheduler_started = Channel(
+        name='scheduler_started',
+        message_type=_SchedulerStartedMessage
+    )
+
+
 class SchedulerMonitor(MonitorBase):
     """
     This class is used to monitor the scheduler and alert on any
@@ -163,7 +185,12 @@ class SchedulerMonitor(MonitorBase):
             max_alerts: int = 5
         ):
         """
-        Initialise the scheduler monitor with the given alert class.
+        Initialise the scheduler monitor with the given alert class. This
+        monitor alerts when:
+        - A scheduler is inactive
+        - A task is inactive
+        - A historical run has failed
+        - A scheduler has started
         ### Args
         - scheduler(Scheduler): The scheduler to monitor.
         - alert(AlertBase): The alert class to use for sending alerts.
@@ -179,7 +206,8 @@ class SchedulerMonitor(MonitorBase):
             message_channel=[
                 MqueueChannels.inactive_scheduler,
                 MqueueChannels.inactive_task,
-                MqueueChannels.historical_run
+                MqueueChannels.historical_run,
+                MqueueChannels.scheduler_started
             ],
             check_function=self.check
         )
@@ -270,6 +298,24 @@ class SchedulerMonitor(MonitorBase):
                     Task ID: {message.task_id}
                     Run ID: {message.run_id}
                     Note: {message.note}
+                ''')
+        elif isinstance(message, MqueueChannels._SchedulerStartedMessage):
+            if self.alert.output_type == AlertOutputType.HTML:
+                self.alert.send_alert(f'''
+                    <b>Scheduler Started Alert</b>
+                    <br>
+                    <br><b>Scheduler ID</b>
+                    <br>{message.scheduler_id}
+                    <br>
+                    <br>Scheduler has been started. This typically happens when
+                    Orcha starts up.
+                ''')
+            else:
+                self.alert.send_alert(f'''
+                    Scheduler Started Alert
+                    Scheduler ID: {message.scheduler_id}
+                    Scheduler has been started. This typically happens when
+                    Orcha starts up.
                 ''')
 
 
@@ -452,6 +498,12 @@ class Scheduler:
         """
         scheduler_log.add_entry(
             actor='scheduler', category='status', text='Starting', json={}
+        )
+        Producer().send_message(
+            channel=MqueueChannels.scheduler_started,
+            message=MqueueChannels.scheduler_started.message_type(
+                scheduler_id=self.scheduler_idk
+            )
         )
         self.running_state = RunningState.running
         # Only start threads if they are None (dont exist) or they are no
