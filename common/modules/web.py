@@ -265,6 +265,9 @@ class RestSink(SinkBase):
             )
 
             if response.status_code != 200:
-                raise Exception(f'Response status code is not 200: {response.status_code}')
+                raise Exception('\n'.join([
+                    f'Response status code is not 200: {response.status_code}',
+                    f'Response text: {response.text[:1000]}'
+                ]))
             else:
                 return response
