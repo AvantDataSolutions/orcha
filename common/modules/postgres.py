@@ -66,5 +66,3 @@ class PostgresEntity(DatabaseEntity):
             )
 
         data.to_sql(table.name, self.engine, if_exists=if_exists, index=index, schema=table.schema, **kwargs)
-
-
