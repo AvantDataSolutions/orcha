@@ -24,9 +24,17 @@ class ModuleConfig():
     ### Options
     - max_retries(int): The maximum number of retries to attempt.
     - retry_interval(int): The interval in seconds at which to retry.
+    - notebook_mode(bool): If true, this will print exceptions rather than
+    raising them *where possible*. This is intended for use in notebooks
+    where only partial credentials are provided for using a few modules
+    and the rest of the modules are not intended to be run and therefore
+    not require credentials to be set. Calling functions of modules that
+    require credentials will still raise an exception, often NoneType ValueError
+    exceptions.
     """
     max_retries: int = 1
     retry_interval: int = 10
+    notebook_mode: bool = False
 
 
 GLOBAL_MODULE_CONFIG: ModuleConfig = ModuleConfig()
@@ -121,6 +129,27 @@ class ModuleBase():
     # downstream: list[ModuleBase]
 
 
+def wrap_all_methods_with_try_except(obj):
+    """
+    This is used when the module is in notebook mode
+    and we want to ignore the bulk of exceptions
+    """
+    for attr_name in dir(obj):
+        if attr_name.startswith("__"):
+            continue
+        attr = getattr(obj, attr_name)
+        if callable(attr):
+            def make_wrapper(method):
+                def wrapper(*args, **kwargs):
+                    try:
+                        return method(*args, **kwargs)
+                    except Exception as e:
+                        print(f'Exception in {obj.module_idk} module: {e}')
+                        # Optionally: raise
+                return wrapper
+            setattr(obj, attr_name, make_wrapper(attr))
+
+
 @dataclass
 class EntityBase(ModuleBase):
     """
@@ -132,6 +161,28 @@ class EntityBase(ModuleBase):
     """
     user_name: str
     password: str
+    # is_connected: bool
+
+    # TODO Alternative approach to the wrapping of methods
+    # to use an 'is_connected' check and print warnings instead
+    # def __getattribute__(self, name):
+    #     attr = object.__getattribute__(self, name)
+    #     if callable(attr) and not name.startswith("__"):
+    #         def wrapper(*args, **kwargs):
+    #             if not self.is_connected:
+    #                 print(f'Warning: {self.module_idk} is not connected.')
+    #                 print(f'   > Skipping call to {name}()')
+    #             else:
+    #                 return attr(*args, **kwargs)
+    #         return wrapper
+    #     return attr
+
+    def __post_init__(self):
+        # Only wrap in notebook made to keep overheads down
+        # rather than checking notebook_mode on every call
+        if GLOBAL_MODULE_CONFIG.notebook_mode:
+            wrap_all_methods_with_try_except(self)
+
 
 
 @dataclass
