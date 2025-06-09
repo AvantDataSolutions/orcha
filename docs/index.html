@@ -19,7 +19,7 @@
                 </head>
                 <body>
                     <div class="column" id="top">
-                        <h1>Table of Contents</h1><ul><li><a href="#orcha.common">common</a></li><ul><li><a href="#orcha.common.modules">modules</a></li><ul><li><a href="#orcha.common.modules.graph_api">graph_api</a></li><ul><li><a href="#orcha.common.modules.graph_api.AppOnlyEntity">AppOnlyEntity</a></li><li><a href="#orcha.common.modules.graph_api.AppOnlyEntity.get_token">AppOnlyEntity.get_token</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiListSource">GraphApiListSource</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiListSource.get">GraphApiListSource.get</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiSharedXlsxOrCsvSource">GraphApiSharedXlsxOrCsvSource</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiSharedXlsxOrCsvSource.get">GraphApiSharedXlsxOrCsvSource.get</a></li><li><a href="#orcha.common.modules.graph_api.Item">Item</a></li><li><a href="#orcha.common.modules.graph_api.Item.from_dict">Item.from_dict</a></li><li><a href="#orcha.common.modules.graph_api.ItemList">ItemList</a></li><li><a href="#orcha.common.modules.graph_api.ItemList.from_dict">ItemList.from_dict</a></li><li><a href="#orcha.common.modules.graph_api.ItemList.get">ItemList.get</a></li><li><a href="#orcha.common.modules.graph_api.ItemList.to_df">ItemList.to_df</a></li><li><a href="#orcha.common.modules.graph_api.ResourceOwnerEntity">ResourceOwnerEntity</a></li><li><a href="#orcha.common.modules.graph_api.ResourceOwnerEntity.get_token">ResourceOwnerEntity.get_token</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem">SharedDriveItem</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem.from_dict">SharedDriveItem.from_dict</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem.get">SharedDriveItem.get</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem.to_df">SharedDriveItem.to_df</a></li></ul><li><a href="#orcha.common.modules.mssql">mssql</a></li><ul><li><a href="#orcha.common.modules.mssql.MssqlEntity">MssqlEntity</a></li><li><a href="#orcha.common.modules.mssql.MssqlEntity.to_sql">MssqlEntity.to_sql</a></li></ul><li><a href="#orcha.common.modules.postgres">postgres</a></li><ul><li><a href="#orcha.common.modules.postgres.PostgresEntity">PostgresEntity</a></li><li><a href="#orcha.common.modules.postgres.PostgresEntity.to_sql">PostgresEntity.to_sql</a></li></ul><li><a href="#orcha.common.modules.sqlite">sqlite</a></li><ul><li><a href="#orcha.common.modules.sqlite.SQLiteEntity">SQLiteEntity</a></li><li><a href="#orcha.common.modules.sqlite.SQLiteEntity.to_sql">SQLiteEntity.to_sql</a></li></ul><li><a href="#orcha.common.modules.web">web</a></li><ul><li><a href="#orcha.common.modules.web.RestEntity">RestEntity</a></li><li><a href="#orcha.common.modules.web.RestSink">RestSink</a></li><li><a href="#orcha.common.modules.web.RestSink.save">RestSink.save</a></li><li><a href="#orcha.common.modules.web.RestSource">RestSource</a></li><li><a href="#orcha.common.modules.web.RestSource.get">RestSource.get</a></li></ul></ul><li><a href="#orcha.common.transforms">transforms</a></li><ul><li><a href="#orcha.common.transforms.datetime_to_string_transform">datetime_to_string_transform</a></li><li><a href="#orcha.common.transforms.keep_changed_rows_transform">keep_changed_rows_transform</a></li><li><a href="#orcha.common.transforms.trim_whitespace_transform">trim_whitespace_transform</a></li></ul></ul><li><a href="#orcha.core">core</a></li><ul><li><a href="#orcha.core.initialise">initialise</a></li></ul><ul><li><a href="#orcha.core.module_base">module_base</a></li><ul><li><a href="#orcha.core.module_base.DatabaseEntity">DatabaseEntity</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.define_table">DatabaseEntity.define_table</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.get_all_tables">DatabaseEntity.get_all_tables</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.get_database_table">DatabaseEntity.get_database_table</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.load_table">DatabaseEntity.load_table</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.read_sql">DatabaseEntity.read_sql</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.run_query">DatabaseEntity.run_query</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.to_sql">DatabaseEntity.to_sql</a></li><li><a href="#orcha.core.module_base.DatabaseSink">DatabaseSink</a></li><li><a href="#orcha.core.module_base.DatabaseSink.save">DatabaseSink.save</a></li><li><a href="#orcha.core.module_base.DatabaseSource">DatabaseSource</a></li><li><a href="#orcha.core.module_base.DatabaseSource.get">DatabaseSource.get</a></li><li><a href="#orcha.core.module_base.EntityBase">EntityBase</a></li><li><a href="#orcha.core.module_base.ModuleBase">ModuleBase</a></li><li><a href="#orcha.core.module_base.ModuleConfig">ModuleConfig</a></li><li><a href="#orcha.core.module_base.PipelineBase">PipelineBase</a></li><li><a href="#orcha.core.module_base.PythonEntity">PythonEntity</a></li><li><a href="#orcha.core.module_base.PythonSource">PythonSource</a></li><li><a href="#orcha.core.module_base.PythonSource.get">PythonSource.get</a></li><li><a href="#orcha.core.module_base.RestEntity">RestEntity</a></li><li><a href="#orcha.core.module_base.SinkBase">SinkBase</a></li><li><a href="#orcha.core.module_base.SinkBase.save">SinkBase.save</a></li><li><a href="#orcha.core.module_base.SourceBase">SourceBase</a></li><li><a href="#orcha.core.module_base.SourceBase.get">SourceBase.get</a></li><li><a href="#orcha.core.module_base.TransformBase">TransformBase</a></li><li><a href="#orcha.core.module_base.TransformBase.transform">TransformBase.transform</a></li><li><a href="#orcha.core.module_base.ValidationBase">ValidationBase</a></li><li><a href="#orcha.core.module_base.ValidationBase.validate">ValidationBase.validate</a></li><li><a href="#orcha.core.module_base.module_function">module_function</a></li><li><a href="#orcha.core.module_base.GLOBAL_MODULE_CONFIG">GLOBAL_MODULE_CONFIG</a></li></ul><li><a href="#orcha.core.monitors">monitors</a></li><ul><li><a href="#orcha.core.monitors.AlertBase">AlertBase</a></li><li><a href="#orcha.core.monitors.AlertBase.send_alert">AlertBase.send_alert</a></li><li><a href="#orcha.core.monitors.AlertOutputType">AlertOutputType</a></li><li><a href="#orcha.core.monitors.Config">Config</a></li><li><a href="#orcha.core.monitors.MicrosoftEmailAlert">MicrosoftEmailAlert</a></li><li><a href="#orcha.core.monitors.MicrosoftEmailAlert.send_alert">MicrosoftEmailAlert.send_alert</a></li><li><a href="#orcha.core.monitors.MonitorBase">MonitorBase</a></li><li><a href="#orcha.core.monitors.MonitorBase.check">MonitorBase.check</a></li><li><a href="#orcha.core.monitors.MqueueConfig">MqueueConfig</a></li><li><a href="#orcha.core.monitors.PrintAlert">PrintAlert</a></li><li><a href="#orcha.core.monitors.PrintAlert.send_alert">PrintAlert.send_alert</a></li><li><a href="#orcha.core.monitors.MONITOR_CONFIG">MONITOR_CONFIG</a></li></ul><li><a href="#orcha.core.scheduler">scheduler</a></li><ul><li><a href="#orcha.core.scheduler.MqueueChannels">MqueueChannels</a></li><li><a href="#orcha.core.scheduler.OrchaSchedulerConfig">OrchaSchedulerConfig</a></li><li><a href="#orcha.core.scheduler.RunningState">RunningState</a></li><li><a href="#orcha.core.scheduler.Scheduler">Scheduler</a></li><li><a href="#orcha.core.scheduler.Scheduler.get_last_active">Scheduler.get_last_active</a></li><li><a href="#orcha.core.scheduler.Scheduler.get_loaded_at">Scheduler.get_loaded_at</a></li><li><a href="#orcha.core.scheduler.Scheduler.pause">Scheduler.pause</a></li><li><a href="#orcha.core.scheduler.Scheduler.set_loaded_at">Scheduler.set_loaded_at</a></li><li><a href="#orcha.core.scheduler.Scheduler.start">Scheduler.start</a></li><li><a href="#orcha.core.scheduler.Scheduler.stop">Scheduler.stop</a></li><li><a href="#orcha.core.scheduler.Scheduler.update_active">Scheduler.update_active</a></li><li><a href="#orcha.core.scheduler.SchedulerMonitor">SchedulerMonitor</a></li><li><a href="#orcha.core.scheduler.SchedulerMonitor.add_scheduler">SchedulerMonitor.add_scheduler</a></li><li><a href="#orcha.core.scheduler.SchedulerMonitor.check">SchedulerMonitor.check</a></li><li><a href="#orcha.core.scheduler.scheduler_log">scheduler_log</a></li></ul><li><a href="#orcha.core.task_runner">task_runner</a></li><ul><li><a href="#orcha.core.task_runner.TaskRunner">TaskRunner</a></li><li><a href="#orcha.core.task_runner.TaskRunner.all_alive">TaskRunner.all_alive</a></li><li><a href="#orcha.core.task_runner.TaskRunner.process_all_tasks">TaskRunner.process_all_tasks</a></li><li><a href="#orcha.core.task_runner.TaskRunner.register_task">TaskRunner.register_task</a></li><li><a href="#orcha.core.task_runner.TaskRunner.register_tasks">TaskRunner.register_tasks</a></li><li><a href="#orcha.core.task_runner.TaskRunner.start_all">TaskRunner.start_all</a></li><li><a href="#orcha.core.task_runner.TaskRunner.stop_all">TaskRunner.stop_all</a></li><li><a href="#orcha.core.task_runner.ThreadHandler">ThreadHandler</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.add_task">ThreadHandler.add_task</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.process_all_tasks">ThreadHandler.process_all_tasks</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.process_task">ThreadHandler.process_task</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.start">ThreadHandler.start</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.stop">ThreadHandler.stop</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.update_active_all_tasks">ThreadHandler.update_active_all_tasks</a></li><li><a href="#orcha.core.task_runner.BASE_THREAD_GROUP">BASE_THREAD_GROUP</a></li><li><a href="#orcha.core.task_runner.runner_log">runner_log</a></li></ul><li><a href="#orcha.core.tasks">tasks</a></li><ul><li><a href="#orcha.core.tasks.FailedRunsMonitor">FailedRunsMonitor</a></li><li><a href="#orcha.core.tasks.FailedRunsMonitor.add_task">FailedRunsMonitor.add_task</a></li><li><a href="#orcha.core.tasks.FailedRunsMonitor.check">FailedRunsMonitor.check</a></li><li><a href="#orcha.core.tasks.MqueueChannels">MqueueChannels</a></li><li><a href="#orcha.core.tasks.RunItem">RunItem</a></li><li><a href="#orcha.core.tasks.RunItem.create">RunItem.create</a></li><li><a href="#orcha.core.tasks.RunItem.delete">RunItem.delete</a></li><li><a href="#orcha.core.tasks.RunItem.get">RunItem.get</a></li><li><a href="#orcha.core.tasks.RunItem.get_all">RunItem.get_all</a></li><li><a href="#orcha.core.tasks.RunItem.get_all_queued">RunItem.get_all_queued</a></li><li><a href="#orcha.core.tasks.RunItem.get_latest">RunItem.get_latest</a></li><li><a href="#orcha.core.tasks.RunItem.get_running_runs">RunItem.get_running_runs</a></li><li><a href="#orcha.core.tasks.RunItem.reload">RunItem.reload</a></li><li><a href="#orcha.core.tasks.RunItem.set_output">RunItem.set_output</a></li><li><a href="#orcha.core.tasks.RunItem.set_progress">RunItem.set_progress</a></li><li><a href="#orcha.core.tasks.RunItem.set_status">RunItem.set_status</a></li><li><a href="#orcha.core.tasks.RunItem.update">RunItem.update</a></li><li><a href="#orcha.core.tasks.RunItem.update_active">RunItem.update_active</a></li><li><a href="#orcha.core.tasks.RunProgressEnum">RunProgressEnum</a></li><li><a href="#orcha.core.tasks.RunStatusEnum">RunStatusEnum</a></li><li><a href="#orcha.core.tasks.ScheduleSet">ScheduleSet</a></li><li><a href="#orcha.core.tasks.ScheduleSet.create_with_key">ScheduleSet.create_with_key</a></li><li><a href="#orcha.core.tasks.ScheduleSet.list_to_dict">ScheduleSet.list_to_dict</a></li><li><a href="#orcha.core.tasks.ScheduleSet.to_dict">ScheduleSet.to_dict</a></li><li><a href="#orcha.core.tasks.TaskItem">TaskItem</a></li><li><a href="#orcha.core.tasks.TaskItem.delete_from_db">TaskItem.delete_from_db</a></li><li><a href="#orcha.core.tasks.TaskItem.get">TaskItem.get</a></li><li><a href="#orcha.core.tasks.TaskItem.get_all">TaskItem.get_all</a></li><li><a href="#orcha.core.tasks.TaskItem.get_last_run">TaskItem.get_last_run</a></li><li><a href="#orcha.core.tasks.TaskItem.get_last_scheduled">TaskItem.get_last_scheduled</a></li><li><a href="#orcha.core.tasks.TaskItem.get_latest_runs">TaskItem.get_latest_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.get_next_scheduled_time">TaskItem.get_next_scheduled_time</a></li><li><a href="#orcha.core.tasks.TaskItem.get_queued_runs">TaskItem.get_queued_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.get_running_runs">TaskItem.get_running_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.get_schedule_from_id">TaskItem.get_schedule_from_id</a></li><li><a href="#orcha.core.tasks.TaskItem.get_schedule_set">TaskItem.get_schedule_set</a></li><li><a href="#orcha.core.tasks.TaskItem.get_time_between_runs">TaskItem.get_time_between_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.is_run_due">TaskItem.is_run_due</a></li><li><a href="#orcha.core.tasks.TaskItem.is_run_due_with_last">TaskItem.is_run_due_with_last</a></li><li><a href="#orcha.core.tasks.TaskItem.prune_runs">TaskItem.prune_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.schedule_run">TaskItem.schedule_run</a></li><li><a href="#orcha.core.tasks.TaskItem.set_enabled">TaskItem.set_enabled</a></li><li><a href="#orcha.core.tasks.TaskItem.set_status">TaskItem.set_status</a></li><li><a href="#orcha.core.tasks.TaskItem.task_function">TaskItem.task_function</a></li><li><a href="#orcha.core.tasks.TaskItem.trigger_run">TaskItem.trigger_run</a></li><li><a href="#orcha.core.tasks.TaskItem.update_active">TaskItem.update_active</a></li><li><a href="#orcha.core.tasks.TaskMonitorBase">TaskMonitorBase</a></li><li><a href="#orcha.core.tasks.TaskMonitorBase.add_task">TaskMonitorBase.add_task</a></li><li><a href="#orcha.core.tasks.VersionMismatchException">VersionMismatchException</a></li><li><a href="#orcha.core.tasks.confirm_initialised">confirm_initialised</a></li><li><a href="#orcha.core.tasks.RunProgress">RunProgress</a></li><li><a href="#orcha.core.tasks.RunStatus">RunStatus</a></li><li><a href="#orcha.core.tasks.RunType">RunType</a></li><li><a href="#orcha.core.tasks.TaskStatus">TaskStatus</a></li><li><a href="#orcha.core.tasks.is_initialised">is_initialised</a></li><li><a href="#orcha.core.tasks.skip_initialisation_check">skip_initialisation_check</a></li></ul></ul><li><a href="#orcha.utils">utils</a></li><ul><li><a href="#orcha.utils.http_utils">http_utils</a></li><li><a href="#orcha.utils.http_utils.get_fastapi_real_ip">http_utils.get_fastapi_real_ip</a></li><li><a href="#orcha.utils.http_utils.get_flask_real_ip">http_utils.get_flask_real_ip</a></li><li><a href="#orcha.utils.pydantic_utils">pydantic_utils</a></li><li><a href="#orcha.utils.pydantic_utils.is_basemodel_equal">pydantic_utils.is_basemodel_equal</a></li></ul><ul><li><a href="#orcha.utils.email">email</a></li><ul><li><a href="#orcha.utils.email.EmailSendResult">EmailSendResult</a></li><li><a href="#orcha.utils.email.EmailTemplate">EmailTemplate</a></li><li><a href="#orcha.utils.email.EmailTemplate.populate">EmailTemplate.populate</a></li><li><a href="#orcha.utils.email.send_email">send_email</a></li><li><a href="#orcha.utils.email.col_style">col_style</a></li><li><a href="#orcha.utils.email.container_style">container_style</a></li><li><a href="#orcha.utils.email.content_footer_style">content_footer_style</a></li><li><a href="#orcha.utils.email.content_inner_style">content_inner_style</a></li><li><a href="#orcha.utils.email.content_outer_style">content_outer_style</a></li><li><a href="#orcha.utils.email.general_style">general_style</a></li><li><a href="#orcha.utils.email.header_style">header_style</a></li><li><a href="#orcha.utils.email.logo_round">logo_round</a></li><li><a href="#orcha.utils.email.logo_text">logo_text</a></li><li><a href="#orcha.utils.email.orcha_logo_style">orcha_logo_style</a></li><li><a href="#orcha.utils.email.orcha_logo_text_style">orcha_logo_text_style</a></li><li><a href="#orcha.utils.email.row_style">row_style</a></li><li><a href="#orcha.utils.email.title_style">title_style</a></li><li><a href="#orcha.utils.email.top_spacer_style">top_spacer_style</a></li></ul><li><a href="#orcha.utils.graph_api">graph_api</a></li><ul><li><a href="#orcha.utils.graph_api.do_get">do_get</a></li><li><a href="#orcha.utils.graph_api.do_post">do_post</a></li><li><a href="#orcha.utils.graph_api.get_msal_token_app_only_login">get_msal_token_app_only_login</a></li><li><a href="#orcha.utils.graph_api.get_msal_token_interactive_login">get_msal_token_interactive_login</a></li><li><a href="#orcha.utils.graph_api.get_msal_token_resource_owner_login">get_msal_token_resource_owner_login</a></li></ul><li><a href="#orcha.utils.kvdb">kvdb</a></li><ul><li><a href="#orcha.utils.kvdb.get">get</a></li><li><a href="#orcha.utils.kvdb.store">store</a></li></ul><li><a href="#orcha.utils.log">log</a></li><ul><li><a href="#orcha.utils.log.LogManager">LogManager</a></li><li><a href="#orcha.utils.log.LogManager.add_entry">LogManager.add_entry</a></li><li><a href="#orcha.utils.log.LogManager.prune">LogManager.prune</a></li></ul><li><a href="#orcha.utils.mqueue">mqueue</a></li><ul><li><a href="#orcha.utils.mqueue.Broker">Broker</a></li><li><a href="#orcha.utils.mqueue.Broker.ack_message">Broker.ack_message</a></li><li><a href="#orcha.utils.mqueue.Broker.get_consumers">Broker.get_consumers</a></li><li><a href="#orcha.utils.mqueue.Broker.ping">Broker.ping</a></li><li><a href="#orcha.utils.mqueue.Broker.register_consumer">Broker.register_consumer</a></li><li><a href="#orcha.utils.mqueue.Broker.run">Broker.run</a></li><li><a href="#orcha.utils.mqueue.Broker.send_message">Broker.send_message</a></li><li><a href="#orcha.utils.mqueue.Broker.send_message_to_consumer">Broker.send_message_to_consumer</a></li><li><a href="#orcha.utils.mqueue.Broker.setup">Broker.setup</a></li><li><a href="#orcha.utils.mqueue.Broker.unregister_consumer">Broker.unregister_consumer</a></li><li><a href="#orcha.utils.mqueue.Channel">Channel</a></li><li><a href="#orcha.utils.mqueue.Consumer">Consumer</a></li><li><a href="#orcha.utils.mqueue.Consumer.ack_message">Consumer.ack_message</a></li><li><a href="#orcha.utils.mqueue.Consumer.receive_message">Consumer.receive_message</a></li><li><a href="#orcha.utils.mqueue.Consumer.register_consumer">Consumer.register_consumer</a></li><li><a href="#orcha.utils.mqueue.Consumer.run">Consumer.run</a></li><li><a href="#orcha.utils.mqueue.Consumer.setup">Consumer.setup</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache">ConsumerCache</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.add_consumer">ConsumerCache.add_consumer</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.get_consumer">ConsumerCache.get_consumer</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.get_consumers">ConsumerCache.get_consumers</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.has_channel">ConsumerCache.has_channel</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.remove_consumer">ConsumerCache.remove_consumer</a></li><li><a href="#orcha.utils.mqueue.ConsumerItem">ConsumerItem</a></li><li><a href="#orcha.utils.mqueue.FastApiApp">FastApiApp</a></li><li><a href="#orcha.utils.mqueue.FastApiApp.run">FastApiApp.run</a></li><li><a href="#orcha.utils.mqueue.FastApiApp.setup">FastApiApp.setup</a></li><li><a href="#orcha.utils.mqueue.Message">Message</a></li><li><a href="#orcha.utils.mqueue.Message.to_json">Message.to_json</a></li><li><a href="#orcha.utils.mqueue.MessageItem">MessageItem</a></li><li><a href="#orcha.utils.mqueue.Producer">Producer</a></li><li><a href="#orcha.utils.mqueue.Producer.send_message">Producer.send_message</a></li><li><a href="#orcha.utils.mqueue.RecieveMessageInput">RecieveMessageInput</a></li><li><a href="#orcha.utils.mqueue.RegisterConsumerInput">RegisterConsumerInput</a></li><li><a href="#orcha.utils.mqueue.SendAckInput">SendAckInput</a></li><li><a href="#orcha.utils.mqueue.SendMessageInput">SendMessageInput</a></li><li><a href="#orcha.utils.mqueue.Status">Status</a></li><li><a href="#orcha.utils.mqueue.UnregisterConsumerInput">UnregisterConsumerInput</a></li></ul><li><a href="#orcha.utils.sqlalchemy">sqlalchemy</a></li><ul><li><a href="#orcha.utils.sqlalchemy.check_definitions">check_definitions</a></li><li><a href="#orcha.utils.sqlalchemy.create_table">create_table</a></li><li><a href="#orcha.utils.sqlalchemy.get">get</a></li><li><a href="#orcha.utils.sqlalchemy.get_latest_versions">get_latest_versions</a></li><li><a href="#orcha.utils.sqlalchemy.indexes_match">indexes_match</a></li><li><a href="#orcha.utils.sqlalchemy.mssql_partial_scaffold">mssql_partial_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.mssql_upsert">mssql_upsert</a></li><li><a href="#orcha.utils.sqlalchemy.postgres_partial_scaffold">postgres_partial_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.postgres_scaffold">postgres_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.postgres_upsert">postgres_upsert</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_build">sqlalchemy_build</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_build_schema">sqlalchemy_build_schema</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_build_table">sqlalchemy_build_table</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_replace">sqlalchemy_replace</a></li><li><a href="#orcha.utils.sqlalchemy.sqlite_partial_scaffold">sqlite_partial_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.sqlite_upsert">sqlite_upsert</a></li><li><a href="#orcha.utils.sqlalchemy.tables_match">tables_match</a></li><li><a href="#orcha.utils.sqlalchemy.CHUNK_SIZE">CHUNK_SIZE</a></li></ul><li><a href="#orcha.utils.threading">threading</a></li><ul><li><a href="#orcha.utils.threading.clear_exception">clear_exception</a></li><li><a href="#orcha.utils.threading.expire_timeout">expire_timeout</a></li><li><a href="#orcha.utils.threading.get_exception">get_exception</a></li><li><a href="#orcha.utils.threading.run_function_with_timeout">run_function_with_timeout</a></li><li><a href="#orcha.utils.threading.store_exception">store_exception</a></li></ul></ul></ul>
+                        <h1>Table of Contents</h1><ul><li><a href="#orcha.common">common</a></li><ul><li><a href="#orcha.common.modules">modules</a></li><ul><li><a href="#orcha.common.modules.filesystem">filesystem</a></li><ul><li><a href="#orcha.common.modules.filesystem.CsvSink">CsvSink</a></li><li><a href="#orcha.common.modules.filesystem.CsvSink.save">CsvSink.save</a></li><li><a href="#orcha.common.modules.filesystem.CsvSource">CsvSource</a></li><li><a href="#orcha.common.modules.filesystem.CsvSource.get">CsvSource.get</a></li><li><a href="#orcha.common.modules.filesystem.ExcelSink">ExcelSink</a></li><li><a href="#orcha.common.modules.filesystem.ExcelSink.save">ExcelSink.save</a></li><li><a href="#orcha.common.modules.filesystem.ExcelSource">ExcelSource</a></li><li><a href="#orcha.common.modules.filesystem.ExcelSource.get">ExcelSource.get</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemEntity">FileSystemEntity</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemEntity.from_csv">FileSystemEntity.from_csv</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemEntity.from_excel">FileSystemEntity.from_excel</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemEntity.to_csv">FileSystemEntity.to_csv</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemEntity.to_excel">FileSystemEntity.to_excel</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemSink">FileSystemSink</a></li><li><a href="#orcha.common.modules.filesystem.FileSystemSource">FileSystemSource</a></li><li><a href="#orcha.common.modules.filesystem.SmbEntity">SmbEntity</a></li><li><a href="#orcha.common.modules.filesystem.SmbEntity.from_csv">SmbEntity.from_csv</a></li><li><a href="#orcha.common.modules.filesystem.SmbEntity.from_excel">SmbEntity.from_excel</a></li><li><a href="#orcha.common.modules.filesystem.SmbEntity.to_csv">SmbEntity.to_csv</a></li><li><a href="#orcha.common.modules.filesystem.SmbEntity.to_excel">SmbEntity.to_excel</a></li></ul><li><a href="#orcha.common.modules.graph_api">graph_api</a></li><ul><li><a href="#orcha.common.modules.graph_api.AppOnlyEntity">AppOnlyEntity</a></li><li><a href="#orcha.common.modules.graph_api.AppOnlyEntity.get_token">AppOnlyEntity.get_token</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiListSource">GraphApiListSource</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiListSource.get">GraphApiListSource.get</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiSharedXlsxOrCsvSource">GraphApiSharedXlsxOrCsvSource</a></li><li><a href="#orcha.common.modules.graph_api.GraphApiSharedXlsxOrCsvSource.get">GraphApiSharedXlsxOrCsvSource.get</a></li><li><a href="#orcha.common.modules.graph_api.Item">Item</a></li><li><a href="#orcha.common.modules.graph_api.Item.from_dict">Item.from_dict</a></li><li><a href="#orcha.common.modules.graph_api.ItemList">ItemList</a></li><li><a href="#orcha.common.modules.graph_api.ItemList.from_dict">ItemList.from_dict</a></li><li><a href="#orcha.common.modules.graph_api.ItemList.get">ItemList.get</a></li><li><a href="#orcha.common.modules.graph_api.ItemList.to_df">ItemList.to_df</a></li><li><a href="#orcha.common.modules.graph_api.ResourceOwnerEntity">ResourceOwnerEntity</a></li><li><a href="#orcha.common.modules.graph_api.ResourceOwnerEntity.get_token">ResourceOwnerEntity.get_token</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem">SharedDriveItem</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem.from_dict">SharedDriveItem.from_dict</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem.get">SharedDriveItem.get</a></li><li><a href="#orcha.common.modules.graph_api.SharedDriveItem.to_df">SharedDriveItem.to_df</a></li></ul><li><a href="#orcha.common.modules.mssql">mssql</a></li><ul><li><a href="#orcha.common.modules.mssql.MssqlEntity">MssqlEntity</a></li><li><a href="#orcha.common.modules.mssql.MssqlEntity.to_sql">MssqlEntity.to_sql</a></li></ul><li><a href="#orcha.common.modules.postgres">postgres</a></li><ul><li><a href="#orcha.common.modules.postgres.PostgresEntity">PostgresEntity</a></li><li><a href="#orcha.common.modules.postgres.PostgresEntity.to_sql">PostgresEntity.to_sql</a></li></ul><li><a href="#orcha.common.modules.sqlite">sqlite</a></li><ul><li><a href="#orcha.common.modules.sqlite.SQLiteEntity">SQLiteEntity</a></li><li><a href="#orcha.common.modules.sqlite.SQLiteEntity.to_sql">SQLiteEntity.to_sql</a></li></ul><li><a href="#orcha.common.modules.web">web</a></li><ul><li><a href="#orcha.common.modules.web.RestEntity">RestEntity</a></li><li><a href="#orcha.common.modules.web.RestSink">RestSink</a></li><li><a href="#orcha.common.modules.web.RestSink.save">RestSink.save</a></li><li><a href="#orcha.common.modules.web.RestSource">RestSource</a></li><li><a href="#orcha.common.modules.web.RestSource.get">RestSource.get</a></li></ul></ul><li><a href="#orcha.common.transforms">transforms</a></li><ul><li><a href="#orcha.common.transforms.datetime_to_string_transform">datetime_to_string_transform</a></li><li><a href="#orcha.common.transforms.keep_changed_rows_transform">keep_changed_rows_transform</a></li><li><a href="#orcha.common.transforms.trim_whitespace_transform">trim_whitespace_transform</a></li></ul></ul><li><a href="#orcha.core">core</a></li><ul><li><a href="#orcha.core.initialise">initialise</a></li></ul><ul><li><a href="#orcha.core.module_base">module_base</a></li><ul><li><a href="#orcha.core.module_base.DatabaseEntity">DatabaseEntity</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.define_table">DatabaseEntity.define_table</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.get_all_tables">DatabaseEntity.get_all_tables</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.get_database_table">DatabaseEntity.get_database_table</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.load_table">DatabaseEntity.load_table</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.read_sql">DatabaseEntity.read_sql</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.run_query">DatabaseEntity.run_query</a></li><li><a href="#orcha.core.module_base.DatabaseEntity.to_sql">DatabaseEntity.to_sql</a></li><li><a href="#orcha.core.module_base.DatabaseSink">DatabaseSink</a></li><li><a href="#orcha.core.module_base.DatabaseSink.save">DatabaseSink.save</a></li><li><a href="#orcha.core.module_base.DatabaseSource">DatabaseSource</a></li><li><a href="#orcha.core.module_base.DatabaseSource.get">DatabaseSource.get</a></li><li><a href="#orcha.core.module_base.EntityBase">EntityBase</a></li><li><a href="#orcha.core.module_base.ModuleBase">ModuleBase</a></li><li><a href="#orcha.core.module_base.ModuleConfig">ModuleConfig</a></li><li><a href="#orcha.core.module_base.PipelineBase">PipelineBase</a></li><li><a href="#orcha.core.module_base.PythonEntity">PythonEntity</a></li><li><a href="#orcha.core.module_base.PythonSource">PythonSource</a></li><li><a href="#orcha.core.module_base.PythonSource.get">PythonSource.get</a></li><li><a href="#orcha.core.module_base.RestEntity">RestEntity</a></li><li><a href="#orcha.core.module_base.SinkBase">SinkBase</a></li><li><a href="#orcha.core.module_base.SinkBase.save">SinkBase.save</a></li><li><a href="#orcha.core.module_base.SourceBase">SourceBase</a></li><li><a href="#orcha.core.module_base.SourceBase.get">SourceBase.get</a></li><li><a href="#orcha.core.module_base.TransformBase">TransformBase</a></li><li><a href="#orcha.core.module_base.TransformBase.transform">TransformBase.transform</a></li><li><a href="#orcha.core.module_base.ValidationBase">ValidationBase</a></li><li><a href="#orcha.core.module_base.ValidationBase.validate">ValidationBase.validate</a></li><li><a href="#orcha.core.module_base.module_function">module_function</a></li><li><a href="#orcha.core.module_base.wrap_all_methods_with_try_except">wrap_all_methods_with_try_except</a></li><li><a href="#orcha.core.module_base.GLOBAL_MODULE_CONFIG">GLOBAL_MODULE_CONFIG</a></li></ul><li><a href="#orcha.core.monitors">monitors</a></li><ul><li><a href="#orcha.core.monitors.AlertBase">AlertBase</a></li><li><a href="#orcha.core.monitors.AlertBase.send_alert">AlertBase.send_alert</a></li><li><a href="#orcha.core.monitors.AlertOutputType">AlertOutputType</a></li><li><a href="#orcha.core.monitors.Config">Config</a></li><li><a href="#orcha.core.monitors.MicrosoftEmailAlert">MicrosoftEmailAlert</a></li><li><a href="#orcha.core.monitors.MicrosoftEmailAlert.send_alert">MicrosoftEmailAlert.send_alert</a></li><li><a href="#orcha.core.monitors.MonitorBase">MonitorBase</a></li><li><a href="#orcha.core.monitors.MonitorBase.check">MonitorBase.check</a></li><li><a href="#orcha.core.monitors.MqueueConfig">MqueueConfig</a></li><li><a href="#orcha.core.monitors.PrintAlert">PrintAlert</a></li><li><a href="#orcha.core.monitors.PrintAlert.send_alert">PrintAlert.send_alert</a></li><li><a href="#orcha.core.monitors.MONITOR_CONFIG">MONITOR_CONFIG</a></li></ul><li><a href="#orcha.core.scheduler">scheduler</a></li><ul><li><a href="#orcha.core.scheduler.MqueueChannels">MqueueChannels</a></li><li><a href="#orcha.core.scheduler.OrchaSchedulerConfig">OrchaSchedulerConfig</a></li><li><a href="#orcha.core.scheduler.RunningState">RunningState</a></li><li><a href="#orcha.core.scheduler.Scheduler">Scheduler</a></li><li><a href="#orcha.core.scheduler.Scheduler.get_last_active">Scheduler.get_last_active</a></li><li><a href="#orcha.core.scheduler.Scheduler.get_loaded_at">Scheduler.get_loaded_at</a></li><li><a href="#orcha.core.scheduler.Scheduler.pause">Scheduler.pause</a></li><li><a href="#orcha.core.scheduler.Scheduler.set_loaded_at">Scheduler.set_loaded_at</a></li><li><a href="#orcha.core.scheduler.Scheduler.start">Scheduler.start</a></li><li><a href="#orcha.core.scheduler.Scheduler.stop">Scheduler.stop</a></li><li><a href="#orcha.core.scheduler.Scheduler.update_active">Scheduler.update_active</a></li><li><a href="#orcha.core.scheduler.SchedulerMonitor">SchedulerMonitor</a></li><li><a href="#orcha.core.scheduler.SchedulerMonitor.add_scheduler">SchedulerMonitor.add_scheduler</a></li><li><a href="#orcha.core.scheduler.SchedulerMonitor.check">SchedulerMonitor.check</a></li><li><a href="#orcha.core.scheduler.scheduler_log">scheduler_log</a></li></ul><li><a href="#orcha.core.task_runner">task_runner</a></li><ul><li><a href="#orcha.core.task_runner.TaskRunner">TaskRunner</a></li><li><a href="#orcha.core.task_runner.TaskRunner.all_alive">TaskRunner.all_alive</a></li><li><a href="#orcha.core.task_runner.TaskRunner.process_all_tasks">TaskRunner.process_all_tasks</a></li><li><a href="#orcha.core.task_runner.TaskRunner.register_task">TaskRunner.register_task</a></li><li><a href="#orcha.core.task_runner.TaskRunner.register_tasks">TaskRunner.register_tasks</a></li><li><a href="#orcha.core.task_runner.TaskRunner.start_all">TaskRunner.start_all</a></li><li><a href="#orcha.core.task_runner.TaskRunner.stop_all">TaskRunner.stop_all</a></li><li><a href="#orcha.core.task_runner.ThreadHandler">ThreadHandler</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.add_task">ThreadHandler.add_task</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.process_all_tasks">ThreadHandler.process_all_tasks</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.process_task">ThreadHandler.process_task</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.start">ThreadHandler.start</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.stop">ThreadHandler.stop</a></li><li><a href="#orcha.core.task_runner.ThreadHandler.update_active_all_tasks">ThreadHandler.update_active_all_tasks</a></li><li><a href="#orcha.core.task_runner.BASE_THREAD_GROUP">BASE_THREAD_GROUP</a></li><li><a href="#orcha.core.task_runner.runner_log">runner_log</a></li></ul><li><a href="#orcha.core.tasks">tasks</a></li><ul><li><a href="#orcha.core.tasks.FailedRunsMonitor">FailedRunsMonitor</a></li><li><a href="#orcha.core.tasks.FailedRunsMonitor.add_task">FailedRunsMonitor.add_task</a></li><li><a href="#orcha.core.tasks.FailedRunsMonitor.check">FailedRunsMonitor.check</a></li><li><a href="#orcha.core.tasks.MqueueChannels">MqueueChannels</a></li><li><a href="#orcha.core.tasks.RunItem">RunItem</a></li><li><a href="#orcha.core.tasks.RunItem.create">RunItem.create</a></li><li><a href="#orcha.core.tasks.RunItem.delete">RunItem.delete</a></li><li><a href="#orcha.core.tasks.RunItem.get">RunItem.get</a></li><li><a href="#orcha.core.tasks.RunItem.get_all">RunItem.get_all</a></li><li><a href="#orcha.core.tasks.RunItem.get_all_queued">RunItem.get_all_queued</a></li><li><a href="#orcha.core.tasks.RunItem.get_latest">RunItem.get_latest</a></li><li><a href="#orcha.core.tasks.RunItem.get_running_runs">RunItem.get_running_runs</a></li><li><a href="#orcha.core.tasks.RunItem.reload">RunItem.reload</a></li><li><a href="#orcha.core.tasks.RunItem.set_output">RunItem.set_output</a></li><li><a href="#orcha.core.tasks.RunItem.set_progress">RunItem.set_progress</a></li><li><a href="#orcha.core.tasks.RunItem.set_status">RunItem.set_status</a></li><li><a href="#orcha.core.tasks.RunItem.update">RunItem.update</a></li><li><a href="#orcha.core.tasks.RunItem.update_active">RunItem.update_active</a></li><li><a href="#orcha.core.tasks.RunProgressEnum">RunProgressEnum</a></li><li><a href="#orcha.core.tasks.RunStatusEnum">RunStatusEnum</a></li><li><a href="#orcha.core.tasks.ScheduleSet">ScheduleSet</a></li><li><a href="#orcha.core.tasks.ScheduleSet.create_with_key">ScheduleSet.create_with_key</a></li><li><a href="#orcha.core.tasks.ScheduleSet.list_to_dict">ScheduleSet.list_to_dict</a></li><li><a href="#orcha.core.tasks.ScheduleSet.to_dict">ScheduleSet.to_dict</a></li><li><a href="#orcha.core.tasks.TaskItem">TaskItem</a></li><li><a href="#orcha.core.tasks.TaskItem.delete_from_db">TaskItem.delete_from_db</a></li><li><a href="#orcha.core.tasks.TaskItem.get">TaskItem.get</a></li><li><a href="#orcha.core.tasks.TaskItem.get_all">TaskItem.get_all</a></li><li><a href="#orcha.core.tasks.TaskItem.get_last_run">TaskItem.get_last_run</a></li><li><a href="#orcha.core.tasks.TaskItem.get_last_scheduled">TaskItem.get_last_scheduled</a></li><li><a href="#orcha.core.tasks.TaskItem.get_latest_runs">TaskItem.get_latest_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.get_next_scheduled_time">TaskItem.get_next_scheduled_time</a></li><li><a href="#orcha.core.tasks.TaskItem.get_queued_runs">TaskItem.get_queued_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.get_running_runs">TaskItem.get_running_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.get_schedule_from_id">TaskItem.get_schedule_from_id</a></li><li><a href="#orcha.core.tasks.TaskItem.get_schedule_set">TaskItem.get_schedule_set</a></li><li><a href="#orcha.core.tasks.TaskItem.get_time_between_runs">TaskItem.get_time_between_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.is_run_due">TaskItem.is_run_due</a></li><li><a href="#orcha.core.tasks.TaskItem.is_run_due_with_last">TaskItem.is_run_due_with_last</a></li><li><a href="#orcha.core.tasks.TaskItem.prune_runs">TaskItem.prune_runs</a></li><li><a href="#orcha.core.tasks.TaskItem.schedule_run">TaskItem.schedule_run</a></li><li><a href="#orcha.core.tasks.TaskItem.set_enabled">TaskItem.set_enabled</a></li><li><a href="#orcha.core.tasks.TaskItem.set_status">TaskItem.set_status</a></li><li><a href="#orcha.core.tasks.TaskItem.task_function">TaskItem.task_function</a></li><li><a href="#orcha.core.tasks.TaskItem.trigger_run">TaskItem.trigger_run</a></li><li><a href="#orcha.core.tasks.TaskItem.update_active">TaskItem.update_active</a></li><li><a href="#orcha.core.tasks.TaskMonitorBase">TaskMonitorBase</a></li><li><a href="#orcha.core.tasks.TaskMonitorBase.add_task">TaskMonitorBase.add_task</a></li><li><a href="#orcha.core.tasks.TriggerConfig">TriggerConfig</a></li><li><a href="#orcha.core.tasks.VersionMismatchException">VersionMismatchException</a></li><li><a href="#orcha.core.tasks.confirm_initialised">confirm_initialised</a></li><li><a href="#orcha.core.tasks.RunProgress">RunProgress</a></li><li><a href="#orcha.core.tasks.RunStatus">RunStatus</a></li><li><a href="#orcha.core.tasks.RunType">RunType</a></li><li><a href="#orcha.core.tasks.TaskStatus">TaskStatus</a></li><li><a href="#orcha.core.tasks.is_initialised">is_initialised</a></li><li><a href="#orcha.core.tasks.skip_initialisation_check">skip_initialisation_check</a></li></ul></ul><li><a href="#orcha.utils">utils</a></li><ul><li><a href="#orcha.utils.http_utils">http_utils</a></li><li><a href="#orcha.utils.http_utils.get_fastapi_real_ip">http_utils.get_fastapi_real_ip</a></li><li><a href="#orcha.utils.http_utils.get_flask_real_ip">http_utils.get_flask_real_ip</a></li><li><a href="#orcha.utils.pydantic_utils">pydantic_utils</a></li><li><a href="#orcha.utils.pydantic_utils.is_basemodel_equal">pydantic_utils.is_basemodel_equal</a></li><li><a href="#orcha.utils.get_config_keys">get_config_keys</a></li></ul><ul><li><a href="#orcha.utils.email">email</a></li><ul><li><a href="#orcha.utils.email.EmailSendResult">EmailSendResult</a></li><li><a href="#orcha.utils.email.EmailTemplate">EmailTemplate</a></li><li><a href="#orcha.utils.email.EmailTemplate.populate">EmailTemplate.populate</a></li><li><a href="#orcha.utils.email.send_email">send_email</a></li><li><a href="#orcha.utils.email.col_style">col_style</a></li><li><a href="#orcha.utils.email.container_style">container_style</a></li><li><a href="#orcha.utils.email.content_footer_style">content_footer_style</a></li><li><a href="#orcha.utils.email.content_inner_style">content_inner_style</a></li><li><a href="#orcha.utils.email.content_outer_style">content_outer_style</a></li><li><a href="#orcha.utils.email.general_style">general_style</a></li><li><a href="#orcha.utils.email.header_style">header_style</a></li><li><a href="#orcha.utils.email.logo_round">logo_round</a></li><li><a href="#orcha.utils.email.logo_text">logo_text</a></li><li><a href="#orcha.utils.email.orcha_logo_style">orcha_logo_style</a></li><li><a href="#orcha.utils.email.orcha_logo_text_style">orcha_logo_text_style</a></li><li><a href="#orcha.utils.email.row_style">row_style</a></li><li><a href="#orcha.utils.email.title_style">title_style</a></li><li><a href="#orcha.utils.email.top_spacer_style">top_spacer_style</a></li></ul><li><a href="#orcha.utils.graph_api">graph_api</a></li><ul><li><a href="#orcha.utils.graph_api.do_get">do_get</a></li><li><a href="#orcha.utils.graph_api.do_post">do_post</a></li><li><a href="#orcha.utils.graph_api.get_msal_token_app_only_login">get_msal_token_app_only_login</a></li><li><a href="#orcha.utils.graph_api.get_msal_token_interactive_login">get_msal_token_interactive_login</a></li><li><a href="#orcha.utils.graph_api.get_msal_token_resource_owner_login">get_msal_token_resource_owner_login</a></li></ul><li><a href="#orcha.utils.kvdb">kvdb</a></li><ul><li><a href="#orcha.utils.kvdb.get">get</a></li><li><a href="#orcha.utils.kvdb.store">store</a></li></ul><li><a href="#orcha.utils.log">log</a></li><ul><li><a href="#orcha.utils.log.LogManager">LogManager</a></li><li><a href="#orcha.utils.log.LogManager.add_entry">LogManager.add_entry</a></li><li><a href="#orcha.utils.log.LogManager.prune">LogManager.prune</a></li></ul><li><a href="#orcha.utils.mqueue">mqueue</a></li><ul><li><a href="#orcha.utils.mqueue.Broker">Broker</a></li><li><a href="#orcha.utils.mqueue.Broker.ack_message">Broker.ack_message</a></li><li><a href="#orcha.utils.mqueue.Broker.get_consumers">Broker.get_consumers</a></li><li><a href="#orcha.utils.mqueue.Broker.ping">Broker.ping</a></li><li><a href="#orcha.utils.mqueue.Broker.register_consumer">Broker.register_consumer</a></li><li><a href="#orcha.utils.mqueue.Broker.run">Broker.run</a></li><li><a href="#orcha.utils.mqueue.Broker.send_message">Broker.send_message</a></li><li><a href="#orcha.utils.mqueue.Broker.send_message_to_consumer">Broker.send_message_to_consumer</a></li><li><a href="#orcha.utils.mqueue.Broker.setup">Broker.setup</a></li><li><a href="#orcha.utils.mqueue.Broker.unregister_consumer">Broker.unregister_consumer</a></li><li><a href="#orcha.utils.mqueue.Channel">Channel</a></li><li><a href="#orcha.utils.mqueue.Consumer">Consumer</a></li><li><a href="#orcha.utils.mqueue.Consumer.ack_message">Consumer.ack_message</a></li><li><a href="#orcha.utils.mqueue.Consumer.receive_message">Consumer.receive_message</a></li><li><a href="#orcha.utils.mqueue.Consumer.register_consumer">Consumer.register_consumer</a></li><li><a href="#orcha.utils.mqueue.Consumer.run">Consumer.run</a></li><li><a href="#orcha.utils.mqueue.Consumer.setup">Consumer.setup</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache">ConsumerCache</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.add_consumer">ConsumerCache.add_consumer</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.get_consumer">ConsumerCache.get_consumer</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.get_consumers">ConsumerCache.get_consumers</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.has_channel">ConsumerCache.has_channel</a></li><li><a href="#orcha.utils.mqueue.ConsumerCache.remove_consumer">ConsumerCache.remove_consumer</a></li><li><a href="#orcha.utils.mqueue.ConsumerItem">ConsumerItem</a></li><li><a href="#orcha.utils.mqueue.FastApiApp">FastApiApp</a></li><li><a href="#orcha.utils.mqueue.FastApiApp.run">FastApiApp.run</a></li><li><a href="#orcha.utils.mqueue.FastApiApp.setup">FastApiApp.setup</a></li><li><a href="#orcha.utils.mqueue.Message">Message</a></li><li><a href="#orcha.utils.mqueue.Message.to_json">Message.to_json</a></li><li><a href="#orcha.utils.mqueue.MessageItem">MessageItem</a></li><li><a href="#orcha.utils.mqueue.Producer">Producer</a></li><li><a href="#orcha.utils.mqueue.Producer.send_message">Producer.send_message</a></li><li><a href="#orcha.utils.mqueue.RecieveMessageInput">RecieveMessageInput</a></li><li><a href="#orcha.utils.mqueue.RegisterConsumerInput">RegisterConsumerInput</a></li><li><a href="#orcha.utils.mqueue.SendAckInput">SendAckInput</a></li><li><a href="#orcha.utils.mqueue.SendMessageInput">SendMessageInput</a></li><li><a href="#orcha.utils.mqueue.Status">Status</a></li><li><a href="#orcha.utils.mqueue.UnregisterConsumerInput">UnregisterConsumerInput</a></li></ul><li><a href="#orcha.utils.sqlalchemy">sqlalchemy</a></li><ul><li><a href="#orcha.utils.sqlalchemy.check_definitions">check_definitions</a></li><li><a href="#orcha.utils.sqlalchemy.create_table">create_table</a></li><li><a href="#orcha.utils.sqlalchemy.get">get</a></li><li><a href="#orcha.utils.sqlalchemy.get_latest_versions">get_latest_versions</a></li><li><a href="#orcha.utils.sqlalchemy.indexes_match">indexes_match</a></li><li><a href="#orcha.utils.sqlalchemy.mssql_partial_scaffold">mssql_partial_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.mssql_upsert">mssql_upsert</a></li><li><a href="#orcha.utils.sqlalchemy.postgres_partial_scaffold">postgres_partial_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.postgres_scaffold">postgres_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.postgres_upsert">postgres_upsert</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_build">sqlalchemy_build</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_build_schema">sqlalchemy_build_schema</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_build_table">sqlalchemy_build_table</a></li><li><a href="#orcha.utils.sqlalchemy.sqlalchemy_replace">sqlalchemy_replace</a></li><li><a href="#orcha.utils.sqlalchemy.sqlite_partial_scaffold">sqlite_partial_scaffold</a></li><li><a href="#orcha.utils.sqlalchemy.sqlite_upsert">sqlite_upsert</a></li><li><a href="#orcha.utils.sqlalchemy.tables_match">tables_match</a></li><li><a href="#orcha.utils.sqlalchemy.CHUNK_SIZE">CHUNK_SIZE</a></li></ul><li><a href="#orcha.utils.threading">threading</a></li><ul><li><a href="#orcha.utils.threading.clear_exception">clear_exception</a></li><li><a href="#orcha.utils.threading.expire_timeout">expire_timeout</a></li><li><a href="#orcha.utils.threading.get_exception">get_exception</a></li><li><a href="#orcha.utils.threading.run_function_with_timeout">run_function_with_timeout</a></li><li><a href="#orcha.utils.threading.store_exception">store_exception</a></li></ul></ul></ul>
                     </div>
                     <div class="column-auto">
                         
@@ -36,7 +36,145 @@
                 </span>
             </div>
         
-                        <html><body><h1 id="orcha.common">orcha.common</h1><h3>Classes</h3><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.common.modules">orcha.common.modules</h1><h3>Classes</h3><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.common.modules.graph_api">orcha.common.modules.graph_api</h1><h3>Classes</h3><div style="margin-left: 20px;">
+                        <html><body><h1 id="orcha.common">orcha.common</h1><h3>Classes</h3><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.common.modules">orcha.common.modules</h1><h3>Classes</h3><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.common.modules.filesystem">orcha.common.modules.filesystem</h1><h3>Classes</h3><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.CsvSink">CsvSink(module_idk: 'str', description: 'str', data_entity: orcha.common.modules.filesystem.FileSystemEntity, file_name: str) -> None</h4>
+            <h5>Extends: <a href="#orcha.common.modules.filesystem.FileSystemSink">orcha.common.modules.filesystem.FileSystemSink</a></h5>
+            <p style="color: blue;"><p>Sink class for writing data to a CSV file</p></p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.CsvSink.save" style="color: blue;">
+                <b>save</b>:
+                (self, data: pandas.core.frame.DataFrame) -&gt; None
+                <span style="color: green;"><p>Saves a DataFrame to a CSV file using the data entity</p></span>
+            </p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.CsvSource">CsvSource(module_idk: 'str', description: 'str', data_entity: orcha.common.modules.filesystem.FileSystemEntity, file_name: str) -> None</h4>
+            <h5>Extends: <a href="#orcha.common.modules.filesystem.FileSystemSource">orcha.common.modules.filesystem.FileSystemSource</a></h5>
+            <p style="color: blue;"><p>Source class for reading data from a CSV file</p></p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.CsvSource.get" style="color: blue;">
+                <b>get</b>:
+                (self) -&gt; pandas.core.frame.DataFrame
+                <span style="color: green;"><p>Reads a DataFrame from a CSV file using the data entity</p></span>
+            </p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.ExcelSink">ExcelSink(module_idk: 'str', description: 'str', data_entity: orcha.common.modules.filesystem.FileSystemEntity, file_name: str) -> None</h4>
+            <h5>Extends: <a href="#orcha.common.modules.filesystem.FileSystemSink">orcha.common.modules.filesystem.FileSystemSink</a></h5>
+            <p style="color: blue;"><p>Sink class for writing data to an Excel file</p></p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.ExcelSink.save" style="color: blue;">
+                <b>save</b>:
+                (self, data: pandas.core.frame.DataFrame) -&gt; None
+                <span style="color: green;"><p>Saves a DataFrame to an Excel file using the data entity</p>
+<h4>Parameters</h4>
+<ul>
+<li>data: DataFrame</li>
+</ul></span>
+            </p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.ExcelSource">ExcelSource(module_idk: 'str', description: 'str', data_entity: orcha.common.modules.filesystem.FileSystemEntity, file_name: str) -> None</h4>
+            <h5>Extends: <a href="#orcha.common.modules.filesystem.FileSystemSource">orcha.common.modules.filesystem.FileSystemSource</a></h5>
+            <p style="color: blue;"><p>Source class for reading data from an Excel file</p></p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.ExcelSource.get" style="color: blue;">
+                <b>get</b>:
+                (self) -&gt; pandas.core.frame.DataFrame
+                <span style="color: green;"><p>Reads a DataFrame from an Excel file using the data entity</p></span>
+            </p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.FileSystemEntity">FileSystemEntity(module_idk: str, description: str, folder: str, user_name: str, password: str)</h4>
+            <h5>Extends: <a href="#orcha.core.module_base.EntityBase">orcha.core.module_base.EntityBase</a>, abc.ABC</h5>
+            <p style="color: blue;"><p>Generic entity class to handle file operations for reading and writing files
+to a file system. Abstract class to be implemented by specific file system entities.</p></p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.FileSystemEntity.from_csv" style="color: blue;">
+                <b>from_csv</b>:
+                (self, file_name: str) -&gt; pandas.core.frame.DataFrame
+                <span style="color: green;"><p>Abstract method to read a DataFrame from a CSV file</p></span>
+            </p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.FileSystemEntity.from_excel" style="color: blue;">
+                <b>from_excel</b>:
+                (self, file_name: str) -&gt; pandas.core.frame.DataFrame
+                <span style="color: green;"><p>Abstract method to read a DataFrame from an Excel file</p></span>
+            </p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.FileSystemEntity.to_csv" style="color: blue;">
+                <b>to_csv</b>:
+                (self, file_name: str, df: pandas.core.frame.DataFrame)
+                <span style="color: green;"><p>Abstract method to write a DataFrame to a CSV file</p></span>
+            </p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.FileSystemEntity.to_excel" style="color: blue;">
+                <b>to_excel</b>:
+                (self, file_name: str, df: pandas.core.frame.DataFrame)
+                <span style="color: green;"><p>Abstract method to write a DataFrame to an Excel file</p></span>
+            </p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.FileSystemSink">FileSystemSink(module_idk: 'str', description: 'str', data_entity: orcha.common.modules.filesystem.FileSystemEntity, file_name: str) -> None</h4>
+            <h5>Extends: <a href="#orcha.core.module_base.SinkBase">orcha.core.module_base.SinkBase</a></h5>
+            <p style="color: blue;"><p>Sink class for writing to a file system using the data entity
+to handle the writing logic</p></p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.FileSystemSource">FileSystemSource(module_idk: 'str', description: 'str', data_entity: orcha.common.modules.filesystem.FileSystemEntity, file_name: str) -> None</h4>
+            <h5>Extends: <a href="#orcha.core.module_base.SourceBase">orcha.core.module_base.SourceBase</a></h5>
+            <p style="color: blue;"><p>Source class for reading from a file system using the data entity
+to handle the reading logic</p></p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.common.modules.filesystem.SmbEntity">SmbEntity(module_idk: str, description: str, host: str, share: str, folder: str, user_name: str, password: str)</h4>
+            <h5>Extends: <a href="#orcha.common.modules.filesystem.FileSystemEntity">orcha.common.modules.filesystem.FileSystemEntity</a></h5>
+            <p style="color: blue;"><p>An entity class to handle the SMB connection and file operations
+for reading and writing files to an SMB share</p></p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.SmbEntity.from_csv" style="color: blue;">
+                <b>from_csv</b>:
+                (self, file_name: str) -&gt; pandas.core.frame.DataFrame
+                <span style="color: green;"><p>SMB specific implementation to read a DataFrame from a CSV file</p>
+<h4>Parameters</h4>
+<ul>
+<li>file_name (str): Name must be compliant with SMB file naming conventions</li>
+</ul>
+<h4>Returns</h4>
+<ul>
+<li>pd.DataFrame: DataFrame read from the file</li>
+</ul></span>
+            </p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.SmbEntity.from_excel" style="color: blue;">
+                <b>from_excel</b>:
+                (self, file_name: str) -&gt; pandas.core.frame.DataFrame
+                <span style="color: green;"><p>SMB specific implementation to read a DataFrame from an Excel file</p>
+<h4>Parameters</h4>
+<ul>
+<li>file_name (str): Name must be compliant with SMB file naming conventions</li>
+</ul>
+<h4>Returns</h4>
+<ul>
+<li>pd.DataFrame: DataFrame read from the file</li>
+</ul></span>
+            </p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.SmbEntity.to_csv" style="color: blue;">
+                <b>to_csv</b>:
+                (self, file_name: str, df: pandas.core.frame.DataFrame)
+                <span style="color: green;"><p>SMB specific implementation to write a DataFrame to a CSV file</p>
+<h4>Parameters</h4>
+<ul>
+<li>file_name (str): Name must be compliant with SMB file naming conventions</li>
+<li>df (pd.DataFrame): DataFrame to be written to the file</li>
+</ul></span>
+            </p>
+        </div><div style="margin-left: 40px;">
+            <p id="orcha.common.modules.filesystem.SmbEntity.to_excel" style="color: blue;">
+                <b>to_excel</b>:
+                (self, file_name: str, df: pandas.core.frame.DataFrame)
+                <span style="color: green;"><p>SMB specific implementation to write a DataFrame to an Excel file</p>
+<h4>Parameters</h4>
+<ul>
+<li>file_name (str): Name must be compliant with SMB file naming conventions</li>
+<li>df (pd.DataFrame): DataFrame to be written to the file</li>
+</ul></span>
+            </p>
+        </div><br><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.common.modules.graph_api">orcha.common.modules.graph_api</h1><h3>Classes</h3><div style="margin-left: 20px;">
             <h4 id="orcha.common.modules.graph_api.AppOnlyEntity">AppOnlyEntity(module_idk: 'str', description: 'str', client_id: 'str', client_secret: 'str', authority: 'str')</h4>
             <h5>Extends: <a href="#orcha.core.module_base.EntityBase">orcha.core.module_base.EntityBase</a></h5>
             <p style="color: blue;"><p>Entity for App-Only flow. This is recommended for server-to-server communication
@@ -194,13 +332,13 @@ to allow for dynamic headers and cookies based authentication.
 Username and password are optional and will be passed for
 basic authentication if provided.</p></p>
         </div><br><div style="margin-left: 20px;">
-            <h4 id="orcha.common.modules.web.RestSink">RestSink(module_idk: 'str', description: 'str', data_entity: 'RestEntity | None', request_type: "Literal['GET', 'POST', 'PUT', 'DELETE']", sub_path: 'str | None' = None, query_params: 'dict | None' = None, preprocess: 'Callable[[dict | str | pd.DataFrame], str] | None' = None) -> None</h4>
+            <h4 id="orcha.common.modules.web.RestSink">RestSink(module_idk: 'str', description: 'str', data_entity: 'RestEntity | None', request_type: "Literal['GET', 'POST', 'PUT', 'DELETE']", sub_path: 'str | None' = None, query_params: 'dict | None' = None, preprocess: 'Callable[[list | dict | str | pd.DataFrame], str] | None' = None) -> None</h4>
             <h5>Extends: <a href="#orcha.core.module_base.SinkBase">orcha.core.module_base.SinkBase</a></h5>
-            <p style="color: blue;"><p>RestSink(module_idk: 'str', description: 'str', data_entity: 'RestEntity | None', request_type: "Literal['GET', 'POST', 'PUT', 'DELETE']", sub_path: 'str | None' = None, query_params: 'dict | None' = None, preprocess: 'Callable[[dict | str | pd.DataFrame], str] | None' = None)</p></p>
+            <p style="color: blue;"><p>RestSink(module_idk: 'str', description: 'str', data_entity: 'RestEntity | None', request_type: "Literal['GET', 'POST', 'PUT', 'DELETE']", sub_path: 'str | None' = None, query_params: 'dict | None' = None, preprocess: 'Callable[[list | dict | str | pd.DataFrame], str] | None' = None)</p></p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.common.modules.web.RestSink.save" style="color: blue;">
                 <b>save</b>:
-                (self, request_data: &#x27;dict | str | pd.DataFrame&#x27;, sub_path_override: &#x27;str | None&#x27; = None, query_params_merge: &#x27;dict | None&#x27; = None, request_kwargs: &#x27;dict[str, Any]&#x27; = {}, **kwargs)
+                (self, request_data: &#x27;list | dict | str | pd.DataFrame&#x27;, sub_path_override: &#x27;str | None&#x27; = None, query_params_merge: &#x27;dict | None&#x27; = None, request_kwargs: &#x27;dict[str, Any]&#x27; = {}, **kwargs)
                 <span style="color: green;"><p>Calls the rest endpoint and returns the response.
 Appends the sub_path to the url and adds the
 query_params to the url in the provided entity.
@@ -275,7 +413,7 @@ port, and database name.</p></p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.module_base.DatabaseEntity.define_table" style="color: blue;">
                 <b>define_table</b>:
-                (self, schema_name: &#x27;str | None&#x27;, table_name: &#x27;str&#x27;, columns: &#x27;list[Column]&#x27; = [], indexes: &#x27;list[Index]&#x27; = [], build=True, match_definition=True)
+                (self, schema_name: &#x27;str | None&#x27;, table_name: &#x27;str&#x27;, columns: &#x27;list[Column]&#x27; = [], indexes: &#x27;list[Index]&#x27; = [], build=True, match_definition=True, match_indexes=True)
                 <span style="color: green;"><p>Define a table with the given name, columns, and primary key.
 build: If True, the table will be created in the database if it does not already exist and
 checks if the column names match. If False no column name checks will be done.</p></span>
@@ -364,13 +502,20 @@ mysql, etc. to provide auth handling for that entity type.</p></p>
             <p style="color: blue;"><p>This is the base class for all modules. It provides a consistent module_idk
 and description for all modules.</p></p>
         </div><br><div style="margin-left: 20px;">
-            <h4 id="orcha.core.module_base.ModuleConfig">ModuleConfig(max_retries: 'int' = 1, retry_interval: 'int' = 10) -> None</h4>
+            <h4 id="orcha.core.module_base.ModuleConfig">ModuleConfig(max_retries: 'int' = 1, retry_interval: 'int' = 10, notebook_mode: 'bool' = False) -> None</h4>
             
             <p style="color: blue;"><p>This class is used to store module configuration.</p>
 <h3>Options</h3>
 <ul>
 <li>max_retries(int): The maximum number of retries to attempt.</li>
 <li>retry_interval(int): The interval in seconds at which to retry.</li>
+<li>notebook_mode(bool): If true, this will print exceptions rather than
+raising them <em>where possible</em>. This is intended for use in notebooks
+where only partial credentials are provided for using a few modules
+and the rest of the modules are not intended to be run and therefore
+not require credentials to be set. Calling functions of modules that
+require credentials will still raise an exception, often NoneType ValueError
+exceptions.</li>
 </ul></p>
         </div><br><div style="margin-left: 20px;">
             <h4 id="orcha.core.module_base.PipelineBase">PipelineBase(module_idk: 'str', description: 'str') -> None</h4>
@@ -464,6 +609,13 @@ This is primarily for re-use of custom validation functions.</p></span>
                 <span style="color: green;"><p>Decorator for module functions that will catch any exceptions and
 raise them with the relevant module information</p></span>
             </p>
+        </div><br><div style="margin-left: 20px;">
+            <p id="orcha.core.module_base.wrap_all_methods_with_try_except" style="color: blue;">
+                <b>wrap_all_methods_with_try_except</b>:
+                (obj)
+                <span style="color: green;"><p>This is used when the module is in notebook mode
+and we want to ignore the bulk of exceptions</p></span>
+            </p>
         </div><br><h3>Variables</h3><div style="margin-left: 20px;">
             <p style="color: blue;" id="orcha.core.module_base.GLOBAL_MODULE_CONFIG">
                 <b>GLOBAL_MODULE_CONFIG</b>:
@@ -472,6 +624,13 @@ raise them with the relevant module information</p></span>
 <ul>
 <li>max_retries(int): The maximum number of retries to attempt.</li>
 <li>retry_interval(int): The interval in seconds at which to retry.</li>
+<li>notebook_mode(bool): If true, this will print exceptions rather than
+raising them <em>where possible</em>. This is intended for use in notebooks
+where only partial credentials are provided for using a few modules
+and the rest of the modules are not intended to be run and therefore
+not require credentials to be set. Calling functions of modules that
+require credentials will still raise an exception, often NoneType ValueError
+exceptions.</li>
 </ul></span>
             </p>
         </div><br><h1 id="orcha.core.monitors">orcha.core.monitors</h1><h3>Classes</h3><div style="margin-left: 20px;">
@@ -547,18 +706,20 @@ an alert</p>
 implemented by the subclass as required.</p></span>
             </p>
         </div><br><div style="margin-left: 20px;">
-            <h4 id="orcha.core.monitors.MqueueConfig">MqueueConfig(broker_host: 'str', broker_bind_ip: 'str', broker_port: 'int', consumer_host: 'str', consumer_bind_ip: 'str', consumer_port: 'int', start_broker: 'bool') -> None</h4>
+            <h4 id="orcha.core.monitors.MqueueConfig">MqueueConfig(broker: 'BrokerConfig | None' = None, consumer: 'ConsumerConfig | None' = None)</h4>
             
             <p style="color: blue;"><p>This class is used to store config for the mqueue
 if using alerts and monitors.</p>
-<h4>Attributes</h4>
+<h4>Notes</h4>
 <ul>
-<li>broker_host: The host of the mqueue broker.</li>
-<li>broker_bind_ip: The ip to bind the broker to.</li>
-<li>broker_port: The port to bind the broker to.</li>
-<li>consumer_host: The host of the mqueue consumer.</li>
-<li>consumer_bind_ip: The ip to bind the consumer to.</li>
-<li>consumer_port: The port to bind the consumer to.</li>
+<li>If the broker and consumer are on the same ip, then both Broker and Consumer         must be specified in the config as they rely on the same FastAPI app.</li>
+<li>All default ports are set to 5800 and bind_ips are set to '0.0.0.0'. If running         outside of a secure environment, bind_ip should be set appropriately.</li>
+</ul>
+<h4>Parameters</h4>
+<ul>
+<li>producer: The config for the producer. If not provided then no messages will be sent.</li>
+<li>broker: The config for the broker. If not provided then the broker will not be started.</li>
+<li>consumer: The config for the consumer. If not provided then the consumer will not be started.</li>
 </ul></p>
         </div><br><div style="margin-left: 20px;">
             <h4 id="orcha.core.monitors.PrintAlert">PrintAlert()</h4>
@@ -813,7 +974,7 @@ alert is expected to check the task.</p></p>
             <p style="color: blue;"><p>This class is used to define the channels for the mqueue
 that the monitors and alerts will use.</p></p>
         </div><br><div style="margin-left: 20px;">
-            <h4 id="orcha.core.tasks.RunItem">RunItem(_task: 'TaskItem', update_timestamp: 'dt', run_idk: 'str', task_idf: 'str', set_idf: 'str', run_type: 'str', scheduled_time: 'dt', start_time: 'dt | None', end_time: 'dt | None', last_active: 'dt | None', config: 'dict', status: 'RunStatus', progress: 'RunProgress', output: 'dict | None' = None) -> None</h4>
+            <h4 id="orcha.core.tasks.RunItem">RunItem(_task: 'TaskItem', update_timestamp: 'dt', run_idk: 'str', task_idf: 'str', set_idf: 'str | None', run_type: 'str', created_time: 'dt', created_by: 'str', scheduled_time: 'dt', start_time: 'dt | None', end_time: 'dt | None', last_active: 'dt | None', config: 'dict', status: 'RunStatus', progress: 'RunProgress', output: 'dict | None' = None) -> None</h4>
             
             <p style="color: blue;"><p>This class manages the run instances for tasks and write data back
 to the database. It also provides functions to get run instances. An
@@ -827,6 +988,8 @@ instance of this class is a representation of a run in the database.</p>
 <li>task_idf: The task id for this run</li>
 <li>set_idf: The schedule set id for this run</li>
 <li>run_type: The type of run (scheduled, manual, retry)</li>
+<li>created_time: The time the run was created</li>
+<li>created_by: the user/schedule/task that created the run</li>
 <li>scheduled_time: The time the run was scheduled to run</li>
 <li>start_time: The time the run started</li>
 <li>end_time: The time the run ended</li>
@@ -839,10 +1002,11 @@ instance of this class is a representation of a run in the database.</p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.RunItem.create" style="color: blue;">
                 <b>create</b>:
-                (task: &#x27;TaskItem&#x27;, run_type: &#x27;RunType&#x27;, schedule: &#x27;ScheduleSet&#x27;, scheduled_time: &#x27;dt&#x27;) -&gt; &#x27;RunItem&#x27;
+                (task: &#x27;TaskItem&#x27;, run_type: &#x27;RunType&#x27;, schedule: &#x27;ScheduleSet | None&#x27;, scheduled_time: &#x27;dt&#x27;, created_by: &#x27;str&#x27;, config_override: &#x27;dict | None&#x27; = None) -&gt; &#x27;RunItem&#x27;
                 <span style="color: green;"><p>Creates a new run instance for a task with a new uuid and
 'new run' defaults in the database. This is a separate function to the
-<strong>init</strong> to keep creating database entries separate from instanciating.</p></span>
+<strong>init</strong> to keep creating database entries separate from instanciating.
+Manual and triggered runs can be created without a schedule set.</p></span>
             </p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.RunItem.delete" style="color: blue;">
@@ -970,13 +1134,13 @@ as a replacement for the string literals.</p></p>
             <p style="color: blue;"><p>The Enum for the status of a run primarily as an auto-complete helper
 as a replacement for the string literals.</p></p>
         </div><br><div style="margin-left: 20px;">
-            <h4 id="orcha.core.tasks.ScheduleSet">ScheduleSet(cron_schedule: 'str', config: 'dict', trigger_task: 'tuple[TaskItem, ScheduleSet | None] | None' = None) -> 'None'</h4>
+            <h4 id="orcha.core.tasks.ScheduleSet">ScheduleSet(cron_schedule: 'str', config: 'dict', trigger_config: 'TriggerConfig | None' = None) -> 'None'</h4>
             
-            <p style="color: blue;"><p>ScheduleSet(cron_schedule: 'str', config: 'dict', trigger_task: 'tuple[TaskItem, ScheduleSet | None] | None' = None) -&gt; 'None'</p></p>
+            <p style="color: blue;"><p>ScheduleSet(cron_schedule: 'str', config: 'dict', trigger_config: 'TriggerConfig | None' = None) -&gt; 'None'</p></p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.ScheduleSet.create_with_key" style="color: blue;">
                 <b>create_with_key</b>:
-                (set_idk: &#x27;str&#x27;, cron_schedule: &#x27;str&#x27;, config: &#x27;dict&#x27;, trigger_task: &#x27;tuple[TaskItem, ScheduleSet | None] | None&#x27; = None) -&gt; &#x27;ScheduleSet&#x27;
+                (set_idk: &#x27;str&#x27;, cron_schedule: &#x27;str&#x27;, config: &#x27;dict&#x27;, trigger_config: &#x27;TriggerConfig | None&#x27; = None) -&gt; &#x27;ScheduleSet&#x27;
                 <span style="color: green;"><p>Creates a schedule set for a task with a cron schedule and config.
 set_idk is generated automatically when the schedule set is added to
 a task which allows the same cron schedule to be used on multiple tasks.</p></span>
@@ -996,7 +1160,7 @@ Typically used when saving to the database.</p></span>
 when saving to the database.</p></span>
             </p>
         </div><br><div style="margin-left: 20px;">
-            <h4 id="orcha.core.tasks.TaskItem">TaskItem(task_idk: 'str', version: 'dt', task_metadata: 'dict', name: 'str', description: 'str', schedule_sets: 'list[ScheduleSet] | list[dict]', thread_group: 'str', last_active: 'dt', status: 'TaskStatus', task_tags: 'list[str]', notes: 'str | None' = None) -> 'None'</h4>
+            <h4 id="orcha.core.tasks.TaskItem">TaskItem(task_idk: 'str', version: 'dt', task_metadata: 'dict', name: 'str', description: 'str', schedule_sets: 'list[ScheduleSet] | list[dict]', thread_group: 'str', last_active: 'dt', status: 'TaskStatus', task_tags: 'list[str]', notes: 'str | None' = None, task_config: 'dict' = {}) -> 'None'</h4>
             
             <p style="color: blue;"><p>The TaskItem class is used to manage tasks in Orcha. This class
 provides functions to create, update, delete and manage tasks
@@ -1063,9 +1227,18 @@ Ordered by scheduled time descending.</p></span>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.TaskItem.get_next_scheduled_time" style="color: blue;">
                 <b>get_next_scheduled_time</b>:
-                (self, schedule: &#x27;ScheduleSet | None&#x27; = None) -&gt; &#x27;dt&#x27;
+                (self, schedule: &#x27;ScheduleSet | None&#x27; = None) -&gt; &#x27;dt | None&#x27;
                 <span style="color: green;"><p>Returns the next scheduled time for the task. If no schedule is
-provided then the first schedule set is used.</p></span>
+provided then the first schedule set is used.</p>
+<h4>Args:</h4>
+<ul>
+<li>schedule: The schedule set to get the next scheduled time for. If None
+then the first schedule set is used.</li>
+</ul>
+<h4>Returns:</h4>
+<ul>
+<li>The next scheduled time for the task or None if no schedule sets are available.</li>
+</ul></span>
             </p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.TaskItem.get_queued_runs" style="color: blue;">
@@ -1128,7 +1301,7 @@ Returns the number of runs deleted.</p></span>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.TaskItem.schedule_run" style="color: blue;">
                 <b>schedule_run</b>:
-                (self, schedule: &#x27;ScheduleSet&#x27;, force_run: &#x27;bool&#x27; = False) -&gt; &#x27;RunItem | None&#x27;
+                (self, schedule_by_id: &#x27;str&#x27;, schedule: &#x27;ScheduleSet&#x27;, force_run: &#x27;bool&#x27; = False) -&gt; &#x27;RunItem | None&#x27;
                 <span style="color: green;"><p>Schedules a run for the task and schedule set and returns the run instance.
 This creates a run regardless of whether a run is due or not.</p>
 <h4>Parameters:</h4>
@@ -1167,7 +1340,7 @@ config: The task config for the current run from the schedule set</p></span>
         </div><div style="margin-left: 40px;">
             <p id="orcha.core.tasks.TaskItem.trigger_run" style="color: blue;">
                 <b>trigger_run</b>:
-                (self, schedule: &#x27;ScheduleSet&#x27;, trigger_task: &#x27;TaskItem&#x27;, scheduled_time: &#x27;dt&#x27;, force_run: &#x27;bool&#x27; = False) -&gt; &#x27;RunItem | None&#x27;
+                (self, trigger_task: &#x27;TaskItem&#x27;, scheduled_time: &#x27;dt&#x27;, force_run: &#x27;bool&#x27; = False, run_config: &#x27;dict | None&#x27; = None) -&gt; &#x27;RunItem | None&#x27;
                 <span style="color: green;"><p>Triggers a run for the task and schedule set and returns the run instance.
 This creates a run regardless of whether a run is due or not.</p>
 <h4>Parameters:</h4>
@@ -1176,6 +1349,8 @@ This creates a run regardless of whether a run is due or not.</p>
 <li>trigger_task: The task that triggered this run</li>
 <li>scheduled_time: The time the run was scheduled to run</li>
 <li>force_run: If True, the run will be created even if the task is not enabled</li>
+<li>run_config: If provided, this config will override any keys already
+set in the schedule set config</li>
 </ul></span>
             </p>
         </div><div style="margin-left: 40px;">
@@ -1197,6 +1372,10 @@ disabled due to inactivity by the scheduler.</p></span>
                 (self, task: &#x27;TaskItem&#x27;)
                 <span style="color: green;"><p>Adds a task to the monitor.</p></span>
             </p>
+        </div><br><div style="margin-left: 20px;">
+            <h4 id="orcha.core.tasks.TriggerConfig">TriggerConfig(task: 'TaskItem', schedule: 'ScheduleSet | None', pass_config: 'bool' = True) -> None</h4>
+            
+            <p style="color: blue;"><p>TriggerConfig(task: 'TaskItem', schedule: 'ScheduleSet | None', pass_config: 'bool' = True)</p></p>
         </div><br><div style="margin-left: 20px;">
             <h4 id="orcha.core.tasks.VersionMismatchException">VersionMismatchException</h4>
             <h5>Extends: builtins.Exception</h5>
@@ -1300,7 +1479,22 @@ request is forwarded through a proxy.</p>
 <h3>Returns:</h3>
 <p>A boolean indicating if the models are equal.</p></span>
             </p>
-        </div><br><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.utils.email">orcha.utils.email</h1><h3>Classes</h3><div style="margin-left: 20px;">
+        </div><br><h3>Functions</h3><div style="margin-left: 20px;">
+            <p id="orcha.utils.get_config_keys" style="color: blue;">
+                <b>get_config_keys</b>:
+                (fnc: Callable) -&gt; dict
+                <span style="color: green;"><p>Inspects a function and returns a dictionary of all config keys used in the function.</p>
+<h4>Parameters</h4>
+<ul>
+<li>fnc: The function to inspect</li>
+</ul>
+<h4>Returns</h4>
+<ul>
+<li>dict: A dictionary of all config keys used in the function,
+with the key as the dictionary key and the default value as the dictionary value</li>
+</ul></span>
+            </p>
+        </div><br><h3>Variables</h3><h1 id="orcha.utils.email">orcha.utils.email</h1><h3>Classes</h3><div style="margin-left: 20px;">
             <h4 id="orcha.utils.email.EmailSendResult">EmailSendResult()</h4>
             
             <p style="color: blue;"><p>Not currently used.</p></p>
@@ -1730,13 +1924,13 @@ is received.</p></span>
         </div><div style="margin-left: 40px;">
             <p id="orcha.utils.mqueue.Consumer.run" style="color: blue;">
                 <b>run</b>:
-                (consumer_bind_ip=&#x27;0.0.0.0&#x27;, consumer_port=5800)
+                ()
                 <span style="color: green;"><p>Runs the FastAPI app in a separate thread to avoid blocking.</p></span>
             </p>
         </div><div style="margin-left: 40px;">
             <p id="orcha.utils.mqueue.Consumer.setup" style="color: blue;">
                 <b>setup</b>:
-                (broker_host: str, broker_port: int, consumer_host: str, consumer_port=5800)
+                (broker_host: str, broker_port: int, consumer_host: str, consumer_port=5800, consumer_bind_ip=&#x27;0.0.0.0&#x27;)
                 <span style="color: green;"><p>Sets up the Consumer class with the broker and consumer host and port.</p></span>
             </p>
         </div><br><div style="margin-left: 20px;">
@@ -1861,7 +2055,7 @@ The message must be of the correct type for the channel.</p></span>
         </div><br><h3>Functions</h3><h3>Variables</h3><h1 id="orcha.utils.sqlalchemy">orcha.utils.sqlalchemy</h1><h3>Classes</h3><h3>Functions</h3><div style="margin-left: 20px;">
             <p id="orcha.utils.sqlalchemy.check_definitions" style="color: blue;">
                 <b>check_definitions</b>:
-                (table: &#x27;Table&#x27;, engine: &#x27;Engine&#x27;)
+                (table: &#x27;Table&#x27;, engine: &#x27;Engine&#x27;, match_indexes: &#x27;bool&#x27; = True)
                 <span style="color: green;"><p>Loads the existing table from the database and checks that the
 provided table definition matches that in the database.
 Raises an exception if the definitions do not match or returns True for convenience.</p></span>
@@ -1869,7 +2063,7 @@ Raises an exception if the definitions do not match or returns True for convenie
         </div><br><div style="margin-left: 20px;">
             <p id="orcha.utils.sqlalchemy.create_table" style="color: blue;">
                 <b>create_table</b>:
-                (schema_name: &#x27;str | None&#x27;, table_name: &#x27;str&#x27;, engine: &#x27;Engine&#x27;, columns: &#x27;list[Column]&#x27;, indexes: &#x27;list[Index]&#x27; = [], match_definition: &#x27;bool&#x27; = True, build_table: &#x27;bool&#x27; = True)
+                (schema_name: &#x27;str | None&#x27;, table_name: &#x27;str&#x27;, engine: &#x27;Engine&#x27;, columns: &#x27;list[Column]&#x27;, indexes: &#x27;list[Index]&#x27; = [], match_definition: &#x27;bool&#x27; = True, match_indexes: &#x27;bool&#x27; = True, build_table: &#x27;bool&#x27; = True)
                 <span style="color: green;"><p>Returns an SQLAlchemy Table object with the given name, column definitions.
 Optionally can build this table in the database or not.</p></span>
             </p>
