@@ -202,12 +202,15 @@ def tables_match(table1, table2):
     """
     Checks if the column names and types of two SQLAlchemy tables match.
     """
-    if len(table1.columns) != len(table2.columns):
-        return False, 'Column count mismatch'
+    t1_missing_names = set(table1.columns.keys()) - set(table2.columns.keys())
+    t2_missing_names = set(table2.columns.keys()) - set(table1.columns.keys())
+
+    if len(t1_missing_names) > 0:
+        return False, f'Table {table1.name} is missing columns: {t1_missing_names}'
+    if len(t2_missing_names) > 0:
+        return False, f'Table {table2.name} is missing columns: {t2_missing_names}'
 
     for column1 in table1.columns:
-        if column1.name not in table2.columns:
-            return False, f'Column {column1.name} not in {table2.name}'
         column2 = table2.columns[column1.name]
         # DateTime and TIMESTAMP are functionally equivalent so mark them as equal
         if isinstance(column1.type, DateTime) and isinstance(column2.type, TIMESTAMP):
