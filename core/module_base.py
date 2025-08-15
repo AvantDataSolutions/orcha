@@ -14,7 +14,10 @@ from sqlalchemy.sql import text as sql
 
 from orcha import current_time
 from orcha.utils import kvdb
+from orcha.utils.log import LogManager
 from orcha.utils.sqlalchemy import create_table
+
+_module_log = LogManager('module_base')
 
 
 @dataclass
@@ -236,6 +239,17 @@ class DatabaseEntity(EntityBase):
             self._tables.append(t)
             return t
         except Exception as e:
+            _module_log.add_entry(
+                actor='load_table',
+                category='load_table',
+                text='Failed to load table',
+                json={
+                    'module_idk': self.module_idk,
+                    'schema_name': schema_name,
+                    'table_name': table_name,
+                    'error': str(e)
+                }
+            )
             raise Exception(
                 f'Error loading table {table_name} from {schema_name} schema'
             ) from e
@@ -253,16 +267,30 @@ class DatabaseEntity(EntityBase):
         if self.engine is None:
             raise Exception('No engine set')
 
-        table = create_table(
-            schema_name=schema_name,
-            table_name=table_name,
-            columns=columns,
-            indexes=indexes,
-            engine=self.engine,
-            build_table=build,
-            match_definition=match_definition,
-            match_indexes=match_indexes
-        )
+        try:
+            table = create_table(
+                schema_name=schema_name,
+                table_name=table_name,
+                columns=columns,
+                indexes=indexes,
+                engine=self.engine,
+                build_table=build,
+                match_definition=match_definition,
+                match_indexes=match_indexes
+            )
+        except Exception as e:
+            _module_log.add_entry(
+                actor='define_table',
+                category='define_table',
+                text='Failed to define table',
+                json={
+                    'module_idk': self.module_idk,
+                    'schema_name': schema_name,
+                    'table_name': table_name,
+                    'error': str(e)
+                }
+            )
+            raise e
         self._tables.append(table)
         return table
 
