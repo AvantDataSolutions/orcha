@@ -1,7 +1,6 @@
 import base64
 from dataclasses import dataclass
-
-import pkg_resources
+from importlib.resources import as_file, files
 
 from orcha.utils import graph_api
 
@@ -101,8 +100,13 @@ class EmailTemplate():
         return full
 
 
-logo_round = pkg_resources.resource_filename('orcha', 'assets/images/orcha-logo-round.png')
-logo_text = pkg_resources.resource_filename('orcha', 'assets/images/orcha-font-black.png')
+logo_text = files('orcha').joinpath('assets/images/orcha-font-black.png')
+with as_file(logo_text) as path:
+    logo_text = str(path)
+
+logo_round = files('orcha').joinpath('assets/images/orcha-logo-round.png')
+with as_file(logo_round) as path:
+    logo_round = str(path)
 
 # load src as base64 from assets/images/orcha-logo.png
 _orcha_logo_src = "data:image/png;base64," + base64.b64encode(open(logo_round, "rb").read()).decode()
