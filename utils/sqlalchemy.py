@@ -55,7 +55,7 @@ def postgres_partial_scaffold(
         pool_recycle=300,
         pool_use_lifo=True
     )
-    session = sessionmaker(bind=engine)
+    session = sessionmaker(bind=engine, expire_on_commit=False)
     return engine, session
 
 

@@ -13,6 +13,7 @@ class LogManager:
     """
     The base class for logging into a database.
     This is designed for very simple logging.
+    Also provides helpers for querying logs.
     """
     @staticmethod
     def _setup_sqlalchemy(
@@ -45,10 +46,10 @@ class LogManager:
 
         class LogEntryRecord(Base):
             __tablename__ = 'logs'
-            created = Column(DateTime)
+            created = Column(DateTime, index=True)
             id = Column(SQL_UUID(as_uuid=True), primary_key=True)
             actor = Column(String)
-            source = Column(String)
+            source = Column(String, index=True)
             category = Column(String)
             text = Column(String)
             json = Column(SQL_JSON)
@@ -109,3 +110,42 @@ class LogManager:
             return db.query(LogEntryRecord).filter(
                 LogEntryRecord.created < dt.utcnow() - max_age
             ).delete()
+
+    @staticmethod
+    def get_entries(
+        limit: int | None = None,
+        sources: list[str] | None = None,
+        start: dt | None = None,
+        end: dt | None = None
+    ):
+        """
+        Get log entries from the database, optionally filtered by sources and date range.
+        ### Parameters:
+        - `limit`: The maximum number of log entries to return. If None, return all entries.
+        - `sources`: The sources of the log entries to return. If None, return entries from all sources.
+        - `start`: Only include entries created >= start (if provided)
+        - `end`: Only include entries created <= end (if provided)
+        ### Returns:
+        A list of log entries.
+        """
+        with Session.begin() as db:
+            query = db.query(LogEntryRecord)
+            if start is not None:
+                query = query.filter(LogEntryRecord.created >= start)
+            if end is not None:
+                query = query.filter(LogEntryRecord.created <= end)
+            if sources is not None and len(sources) > 0:
+                query = query.filter(LogEntryRecord.source.in_(sources))
+            query = query.order_by(LogEntryRecord.created.desc())
+            if limit is not None and limit > 0:
+                query = query.limit(limit)
+            return query.all()
+
+    @staticmethod
+    def get_distinct_sources() -> list[str]:
+        """Return a sorted list of distinct log sources."""
+        with Session.begin() as db:
+            rows = db.query(LogEntryRecord.source).distinct().all()
+            sources: list[str] = [r[0] for r in rows if r and r[0]]
+        return sorted(sources)
+
