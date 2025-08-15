@@ -63,6 +63,7 @@ def send_email(
         print('---------- ERROR SENDING EMAIL -----------')
         print(e)
         print('------------------------------------------')
+        return str(e)
 
 
 class EmailSendResult():

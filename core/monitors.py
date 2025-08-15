@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+from orcha.utils.log import LogManager
 from orcha.utils import email, graph_api, mqueue
 
+_monitor_log = LogManager('monitors')
 
 class Config:
     """
@@ -188,7 +190,7 @@ class MicrosoftEmailAlert(AlertBase):
             scope=MONITOR_CONFIG.scope
         )
         subject = f'{self.subject}'
-        email.send_email(
+        r = email.send_email(
             token=token,
             send_as=MONITOR_CONFIG.email_send_as,
             to=self.to,
@@ -197,6 +199,17 @@ class MicrosoftEmailAlert(AlertBase):
             body=message,
             importance='high'
         )
+        if isinstance(r, str):
+            _monitor_log.add_entry(
+                actor='MicrosoftEmailAlert',
+                category='send_alert',
+                text=f'Error sending email: {r}',
+                json={
+                    'to': self.to,
+                    'subject': subject,
+                    'body': message
+                }
+            )
 
 
 @dataclass

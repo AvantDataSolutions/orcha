@@ -22,8 +22,27 @@ def initialise(
     - LogManager: The orcha log manager to be used for custom logging
     """
 
+    # Initialise the log manager first for use later on
+    LogManager._setup_sqlalchemy(
+        user=orcha_user,
+        passwd=orcha_pass,
+        server=orcha_server,
+        db=orcha_db,
+        application_name=f'{application_name}_logs'
+    )
+
+    lm = LogManager('orcha')
+
     # Do the monitor config first, so the mqueue is set up correctly
     # for the tasks and schedulers to use
+    lm.add_entry(
+        actor='orcha_core',
+        category='startup',
+        text='Configuring monitors',
+        json={
+            'monitor_config': monitor_config
+        }
+    )
     monitors.MONITOR_CONFIG = monitor_config
     if monitor_config:
         # remove any leading or trailing slashes from urls
@@ -64,34 +83,44 @@ def initialise(
         if not Consumer.broker_host:
             raise Exception('mqueue must be configured if using monitors and alerts')
 
-    tasks._setup_sqlalchemy(
-        orcha_user=orcha_user,
-        orcha_pass=orcha_pass,
-        orcha_server=orcha_server,
-        orcha_db=orcha_db,
-        orcha_schema=_ORCHA_SCHEMA,
-        application_name=f'{application_name}_tasks'
-    )
+    lm.add_entry('orcha_core', 'startup', 'Setting up tasks sqlalchemy', {})
+    try:
+        tasks._setup_sqlalchemy(
+            orcha_user=orcha_user,
+            orcha_pass=orcha_pass,
+            orcha_server=orcha_server,
+            orcha_db=orcha_db,
+            orcha_schema=_ORCHA_SCHEMA,
+            application_name=f'{application_name}_tasks'
+        )
+    except Exception as e:
+        lm.add_entry('orcha_core', 'error', 'Error setting up tasks sqlalchemy', {
+            'exception_type': type(e).__name__,
+            'exception': str(e)
+        })
+        # still raise the exception as we want to fail-fast and not run properly
+        # if something is wrong
+        raise e
 
-    scheduler._setup_sqlalchemy(
-        orcha_user=orcha_user,
-        orcha_pass=orcha_pass,
-        orcha_server=orcha_server,
-        orcha_db=orcha_db,
-        orcha_schema=_ORCHA_SCHEMA,
-        application_name=f'{application_name}_scheduler'
-    )
+    lm.add_entry('orcha_core', 'startup', 'Setting up scheduler sqlalchemy', {})
+    try:
+        scheduler._setup_sqlalchemy(
+            orcha_user=orcha_user,
+            orcha_pass=orcha_pass,
+            orcha_server=orcha_server,
+            orcha_db=orcha_db,
+            orcha_schema=_ORCHA_SCHEMA,
+            application_name=f'{application_name}_scheduler'
+        )
+    except Exception as e:
+        lm.add_entry('orcha_core', 'error', 'Error setting up scheduler sqlalchemy', {
+            'exception_type': type(e).__name__,
+            'exception': str(e)
+        })
+        # same as above logic
+        raise e
 
-    LogManager._setup_sqlalchemy(
-        user=orcha_user,
-        passwd=orcha_pass,
-        server=orcha_server,
-        db=orcha_db,
-        application_name=f'{application_name}_logs'
-    )
-
-    lm = LogManager('orcha')
-    lm.add_entry('orcha', 'info', 'Initialised orcha', {})
+    lm.add_entry('orcha_core', 'startup', 'Orcha initialisation complete', {})
     return LogManager('orcha_custom')
 
 

@@ -412,6 +412,11 @@ class Scheduler:
         # TODO Move to using scheduler_idks as if we run multiple schedulers
         # we'll only record when the latest one started
         Scheduler.set_loaded_at()
+        scheduler_log.add_entry(
+            actor='scheduler', category='status', text='Scheduler Initialised', json={
+                'scheduler_idk': self.scheduler_idk
+            }
+        )
 
     @staticmethod
     def set_loaded_at(scheduler_idk: str = 'main'):
