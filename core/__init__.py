@@ -35,13 +35,40 @@ def initialise(
 
     # Do the monitor config first, so the mqueue is set up correctly
     # for the tasks and schedulers to use
+    log_json = {}
+    if monitor_config:
+        log_json = {
+            'send_as': monitor_config.email_send_as,
+            'orcha_ui_base_url': monitor_config.orcha_ui_base_url,
+        }
+        if monitor_config.mqueue_config:
+            if monitor_config.mqueue_config.broker:
+                broker = monitor_config.mqueue_config.broker
+                log_json['mqueue_broker_bind_ip'] = broker.broker_bind_ip
+                log_json['mqueue_broker_port'] = broker.broker_port
+            else:
+                log_json['mqueue_broker'] = 'No broker config'
+
+            if monitor_config.mqueue_config.consumer:
+                consumer = monitor_config.mqueue_config.consumer
+                log_json['mqueue_consumer_bind_ip'] = consumer.consumer_bind_ip
+                log_json['mqueue_consumer_port'] = consumer.consumer_port
+                log_json['mqueue_consumer_host'] = consumer.consumer_host
+            else:
+                log_json['mqueue_consumer'] = 'No consumer config'
+
+            if monitor_config.mqueue_config.producer:
+                producer = monitor_config.mqueue_config.producer
+                log_json['mqueue_producer_broker_host'] = producer.broker_host
+                log_json['mqueue_producer_broker_port'] = producer.broker_port
+            else:
+                log_json['mqueue_producer'] = 'No producer config'
+
     lm.add_entry(
         actor='orcha_core',
         category='startup',
-        text='Configuring monitors',
-        json={
-            'monitor_config': monitor_config
-        }
+        text='Configuring monitors' if monitor_config else 'No monitor config provided',
+        json=log_json
     )
     monitors.MONITOR_CONFIG = monitor_config
     if monitor_config:
@@ -81,6 +108,12 @@ def initialise(
                 Producer.default_broker_port = monitor_config.mqueue_config.producer.broker_port
 
         if not Consumer.broker_host:
+            lm.add_entry(
+                actor='orcha_core',
+                category='error',
+                text='Mqueue broker host required when using monitors and alerts',
+                json={}
+            )
             raise Exception('mqueue must be configured if using monitors and alerts')
 
     lm.add_entry('orcha_core', 'startup', 'Setting up tasks sqlalchemy', {})
@@ -122,5 +155,3 @@ def initialise(
 
     lm.add_entry('orcha_core', 'startup', 'Orcha initialisation complete', {})
     return LogManager('orcha_custom')
-
-
