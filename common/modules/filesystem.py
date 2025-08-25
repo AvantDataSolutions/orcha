@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pandas as pd
 from pandas import DataFrame
 from smb.SMBConnection import SMBConnection
+from smb.SMBConnection import OperationFailure
 
 from orcha.core.module_base import EntityBase, SinkBase, SourceBase
 
@@ -82,26 +83,25 @@ class SmbEntity(FileSystemEntity):
         )
         self.host = host
         self.share = share
-        self.client = SMBConnection(
-            username=user_name,
-            password=password,
-            my_name=user_name,
-            remote_name=host,
-            is_direct_tcp=True
-        )
-        self._is_connected = False
 
     def _to_file(self, file_name: str, df: pd.DataFrame, file_format: str):
         """
         Writes a DataFrame to a file on the SMB share generalised here
         to handle both CSV and Excel file formats
         """
+        client = SMBConnection(
+            username=self.user_name,
+            password=self.password,
+            my_name=self.user_name,
+            remote_name=self.host,
+            is_direct_tcp=True
+        )
+
         file_path = f'{self.folder}/{file_name}'
-        if not self._is_connected:
-            self._is_connected = self.client.connect(self.host, 445)
-            if not self._is_connected:
-                raise ConnectionError(f'Connection failed for {self.host}')
-        if not self.client.has_authenticated:
+        _is_connected = client.connect(self.host, 445)
+        if not _is_connected:
+            raise ConnectionError(f'Connection failed for {self.host}')
+        if not client.has_authenticated:
             raise ConnectionError(f'Authentication failed for {self.user_name}')
         with io.BytesIO() as file_obj:
             try:
@@ -112,10 +112,9 @@ class SmbEntity(FileSystemEntity):
                 else:
                     raise ValueError(f'Unsupported file format: {file_format}')
                 file_obj.seek(0)
-                self.client.storeFile(self.share, file_path, file_obj)
+                client.storeFile(self.share, file_path, file_obj)
             except Exception as e:
-                self.client.close()
-                self._is_connected = False
+                client.close()
                 raise e
 
     def to_csv(self, file_name: str, df: pd.DataFrame):
@@ -141,16 +140,22 @@ class SmbEntity(FileSystemEntity):
         Reads a DataFrame from a file on the SMB share generalised here
         to handle both CSV and Excel file formats
         """
+        client = SMBConnection(
+            username=self.user_name,
+            password=self.password,
+            my_name=self.user_name,
+            remote_name=self.host,
+            is_direct_tcp=True
+        )
         file_path = f'{self.folder}/{file_name}'
-        if not self._is_connected:
-            self._is_connected = self.client.connect(self.host, 445)
-            if not self._is_connected:
-                raise ConnectionError(f'Connection failed for {self.host}')
-        if not self.client.has_authenticated:
+        _is_connected = client.connect(self.host, 445)
+        if not _is_connected:
+            raise ConnectionError(f'Connection failed for {self.host}')
+        if not client.has_authenticated:
             raise ConnectionError(f"Authentication failed for {self.user_name}")
         with io.BytesIO() as file_obj:
             try:
-                self.client.retrieveFile(self.share, file_path, file_obj)
+                client.retrieveFile(self.share, file_path, file_obj)
                 file_obj.seek(0)
 
                 if file_format == 'csv':
@@ -160,9 +165,12 @@ class SmbEntity(FileSystemEntity):
                 else:
                     raise ValueError(f'Unsupported file format: {file_format}')
                 return df
-            except Exception as e:
-                self.client.close()
-                self._is_connected = False
+            except OperationFailure as e:
+                if '0xC0000034' in str(e):
+                    # Only for file not found errors are we returning an empty DataFrame
+                    # If it's another 'can't read file' error, we want to raise it
+                    return pd.DataFrame()
+                client.close()
                 raise e
 
     def from_csv(self, file_name: str) -> pd.DataFrame:
