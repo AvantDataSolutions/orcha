@@ -359,6 +359,7 @@ def mssql_upsert(
 
         temp_table = f'#temp_{token_hex(16)}'
         merge_on = [column.name for column in table_inspect.primary_key]
+        non_pk_cols = [c.name for c in table_inspect.columns if c.name not in merge_on]
 
         if len(merge_on) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
@@ -432,7 +433,7 @@ def mssql_upsert(
                 INSERT ({', '.join([f'[{c}]' for c in data.columns])})
                 VALUES ({', '.join(f'source.[{c}]' for c in data.columns)})
             WHEN MATCHED THEN UPDATE SET
-                {', '.join(f'target.[{c}] = source.[{c}]' for c in data.columns)};
+                {', '.join(f'target.[{c}] = source.[{c}]' for c in non_pk_cols)};
             '''))
         session.execute(sql(f'DROP TABLE {temp_table}'))
 
