@@ -479,6 +479,16 @@ class DatabaseSink(SinkBase):
         elif self.table is None:
             raise Exception('No table set for sink')
 
+        # should be the first touch point for all saves, so one spot to
+        # make sure the columns match and raise a nice error
+        data_cols = set(data.columns)
+        table_cols = set([c.name for c in self.table.columns])
+        if not data_cols.issubset(table_cols):
+            missing_cols = data_cols - table_cols
+            raise KeyError(
+                f'Columns in data provided ({missing_cols}) not found in table {self.table.name}'
+            )
+
         self.data_entity.to_sql(
             data=data,
             table=self.table,
