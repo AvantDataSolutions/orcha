@@ -135,7 +135,11 @@ class LogManager:
             if end is not None:
                 query = query.filter(LogEntryRecord.created <= end)
             if sources is not None and len(sources) > 0:
-                query = query.filter(LogEntryRecord.source.in_(sources))
+                sources_formatted = [
+                    s.lower().strip().replace(" ", "_")
+                    for s in sources if s and len(s) > 0
+                ]
+                query = query.filter(LogEntryRecord.source.in_(sources_formatted))
             query = query.order_by(LogEntryRecord.created.desc())
             if limit is not None and limit > 0:
                 query = query.limit(limit)
@@ -148,4 +152,3 @@ class LogManager:
             rows = db.query(LogEntryRecord.source).distinct().all()
             sources: list[str] = [r[0] for r in rows if r and r[0]]
         return sorted(sources)
-
