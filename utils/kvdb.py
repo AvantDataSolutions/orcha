@@ -176,3 +176,81 @@ def get(
         raise Exception('Global kvdb storage not implemented')
     else:
         raise Exception(f'Key {key} not found in store')
+
+
+def list_items(
+        storage_type: Literal['postgres'],
+        limit: int = 200,
+        search: str | None = None,
+        include_expired: bool = False,
+    ) -> list[dict[str, Any]]:
+    """Return snapshots of kvdb entries for inspection tools."""
+    if storage_type != 'postgres':
+        raise NotImplementedError('Only postgres kvdb listing is supported')
+    if not is_initialised or _sessionmaker is None or KvdbItemModel is None:
+        raise Exception('KVDB module not initialised for Postgres storage.')
+
+    limit = max(1, min(limit or 200, 500))
+    with _sessionmaker.begin() as tx:
+        query = tx.query(KvdbItemModel)
+        if search:
+            like_query = f'%{search}%'
+            query = query.filter(KvdbItemModel.key.ilike(like_query))
+        query = query.order_by(KvdbItemModel.key.asc()).limit(limit)
+        rows = query.all()
+
+    now = dt.now()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        is_expired = row.expiry is not None and row.expiry < now
+        if is_expired and not include_expired:
+            continue
+
+        preview = ''
+        load_error = None
+        try:
+            value_obj = pickle.loads(row.value)
+            preview = repr(value_obj)
+        except Exception as exc:
+            value_obj = None
+            load_error = str(exc)
+            preview = f'<unreadable: {exc}>'
+
+        ttl_seconds = None
+        if row.expiry is not None:
+            ttl_seconds = int((row.expiry - now).total_seconds())
+
+        items.append({
+            'key': row.key,
+            'type': row.type,
+            'expiry': row.expiry,
+            'is_expired': is_expired,
+            'ttl_seconds': ttl_seconds,
+            'size_bytes': len(row.value) if row.value else 0,
+            'value_preview': preview,
+            'load_error': load_error,
+        })
+
+    return items
+
+
+def delete(
+        storage_type: Literal['postgres', 'local'],
+        key: str,
+        thread_name: str | None = None,
+    ) -> bool:
+    """Delete a value from the kvdb store."""
+    if storage_type == 'postgres':
+        if not is_initialised or _sessionmaker is None or KvdbItemModel is None:
+            raise Exception('KVDB module not initialised for Postgres storage.')
+        with _sessionmaker.begin() as tx:
+            deleted = tx.query(KvdbItemModel).filter(KvdbItemModel.key == key).delete()
+        return deleted > 0
+    elif storage_type == 'local':
+        if thread_name is None:
+            thread_name = threading.current_thread().name
+        if thread_name not in _store_threaded:
+            return False
+        return _store_threaded[thread_name].pop(key, None) is not None
+    else:
+        raise NotImplementedError('Global kvdb storage not implemented')
