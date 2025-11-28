@@ -248,15 +248,18 @@ def list_items(
         if is_expired and not include_expired:
             continue
 
+        is_encrypted = row.salt is not None
         preview = ''
         load_error = None
-        try:
-            value_obj = pickle.loads(row.value)
-            preview = repr(value_obj)
-        except Exception as exc:
-            value_obj = None
-            load_error = str(exc)
-            preview = f'<unreadable: {exc}>'
+        if is_encrypted:
+            preview = 'Encrypted value (key required)'
+        else:
+            try:
+                value_obj = pickle.loads(row.value)
+                preview = repr(value_obj)
+            except Exception as exc:
+                load_error = str(exc)
+                preview = f'<unreadable: {exc}>'
 
         ttl_seconds = None
         if row.expiry is not None:
@@ -269,6 +272,7 @@ def list_items(
             'is_expired': is_expired,
             'ttl_seconds': ttl_seconds,
             'size_bytes': len(row.value) if row.value else 0,
+            'is_encrypted': is_encrypted,
             'value_preview': preview,
             'load_error': load_error,
         })
