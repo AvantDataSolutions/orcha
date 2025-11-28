@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime as dt, timedelta as td
 import threading
+import pickle
 from typing import Any, Literal, Type, TypeVar, Union
+
+from sqlalchemy import String, LargeBinary, DateTime
+from sqlalchemy.orm import sessionmaker, Session, Mapped, mapped_column
+
+from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
+
+from orcha.core.module_base import GLOBAL_MODULE_CONFIG
 
 print('Loading:',__name__)
 
@@ -12,6 +20,45 @@ T = TypeVar('T')
 _store_threaded = {}
 _store_global = {}
 
+
+is_initialised = False
+_sessionmaker: sessionmaker[Session] | None = None
+
+def initialise(
+        postgres_user: str,
+        postgres_pass: str,
+        postgres_server: str,
+        postgres_db: str,
+        postgres_schema: str,
+    ):
+    """
+    Initialise the kvdb module with a Postgres connection.
+    """
+
+    global is_initialised, _sessionmaker, KvdbItemModel
+    if is_initialised:
+        return
+
+    _Base, _engine, _sessionmaker = postgres_scaffold(
+        user=postgres_user,
+        passwd=postgres_pass,
+        server=postgres_server,
+        db=postgres_db,
+        schema=postgres_schema,
+        application_name='orcha_kvdb'
+    )
+
+    class KvdbItemModel(_Base):
+        __tablename__ = 'kvdb_items'
+
+        key: Mapped[str] = mapped_column(String, primary_key=True)
+        value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+        type: Mapped[str] = mapped_column(String, nullable=False)
+        expiry: Mapped[dt] = mapped_column(DateTime)
+
+    sqlalchemy_build(base=_Base, engine=_engine, schema_name=postgres_schema)
+
+    is_initialised = True
 
 @dataclass
 class _KvdbItem():
@@ -31,7 +78,10 @@ def store(
     """
     Store a value in the store.
     #### Arguments
-    - `storage_type`: The type of storage to store the value in.
+    - `storage_type`:
+        - 'local': Store the value in a thread-local store.
+        - 'global': Store the value in a global store.
+        - 'postgres': Store the value in the Orcha Postgres database.
     - `key`: The key to store the value under.
     - `value`: The value to store.
     - `expiry`: The time to expire the value.
@@ -42,9 +92,19 @@ def store(
     if thread_name is None:
         thread_name = threading.current_thread().name
     if storage_type == 'postgres':
-        raise Exception('Postgres kvdb storage not implemented')
+        if not is_initialised or _sessionmaker is None:
+            raise Exception('KVDB module not initialised for Postgres storage.')
+        with _sessionmaker.begin() as tx:
+            data = pickle.dumps(value)
+            item = KvdbItemModel(
+                key=key,
+                value=data,
+                type=type(value).__name__,
+                expiry=(dt.now() + expiry) if expiry else None
+            )
+            tx.merge(item)
     elif storage_type == 'local':
-        exp_time = dt.utcnow() + expiry if expiry else None
+        exp_time = dt.now() + expiry if expiry else None
         item = _KvdbItem(storage_type, key, value, type(value).__name__, exp_time)
         if thread_name not in _store_threaded:
             _store_threaded[thread_name] = {}
@@ -80,13 +140,29 @@ def get(
     if thread_name not in _store_threaded:
         _store_threaded[thread_name] = {}
     if storage_type == 'postgres':
-        raise Exception('Postgres kvdb storage not implemented')
+        if not is_initialised or _sessionmaker is None:
+            raise Exception('KVDB module not initialised for Postgres storage.')
+        with _sessionmaker.begin() as tx:
+            item = tx.get(KvdbItemModel, key)
+            if item is None:
+                if no_key_return == 'none':
+                    return None
+                elif no_key_return == 'exception':
+                    raise Exception(f'Key {key} not found in store')
+                else:
+                    raise Exception(f'Invalid no_key_return: {no_key_return}')
+            if item.expiry < dt.now():
+                return None
+            result = pickle.loads(item.value)
+            if not isinstance(result, as_type):
+                raise Exception(f'Key {key} found but type mismatch: expected {as_type.__name__}, got {type(result).__name__}')
+        return result
     elif storage_type == 'local':
         if key in _store_threaded[thread_name]:
             result = _store_threaded[thread_name][key]
             if result is None:
                 return None
-            if result.expiry is not None and result.expiry < dt.utcnow():
+            if result.expiry is not None and result.expiry < dt.now():
                 return None
             return result.value
         else:

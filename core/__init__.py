@@ -3,6 +3,7 @@ from __future__ import annotations
 from orcha.core import monitors, scheduler, tasks
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Broker, Consumer, Producer
+from orcha.utils import kvdb
 
 _ORCHA_SCHEMA = 'orcha'
 
@@ -10,7 +11,12 @@ def initialise(
         orcha_user: str, orcha_pass: str,
         orcha_server: str, orcha_db: str,
         application_name: str,
-        monitor_config: monitors.Config | None = None
+        monitor_config: monitors.Config | None = None,
+        kvdb_postgres_user: str | None = None,
+        kvdb_postgres_pass: str | None = None,
+        kvdb_postgres_server: str | None = None,
+        kvdb_postgres_db: str | None = None,
+        kvdb_postgres_schema: str | None = None,
     ):
     """
     This function must be called before any other functions in the orcha package.
@@ -32,6 +38,14 @@ def initialise(
     )
 
     lm = LogManager('orcha')
+
+    kvdb.initialise(
+        postgres_user=kvdb_postgres_user or orcha_user,
+        postgres_pass=kvdb_postgres_pass or orcha_pass,
+        postgres_server=kvdb_postgres_server or orcha_server,
+        postgres_db=kvdb_postgres_db or orcha_db,
+        postgres_schema=kvdb_postgres_schema or _ORCHA_SCHEMA,
+    )
 
     # Do the monitor config first, so the mqueue is set up correctly
     # for the tasks and schedulers to use
