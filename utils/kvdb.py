@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from datetime import datetime as dt, timedelta as td
 import threading
 import pickle
+import base64
+import os
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from cryptography.fernet import Fernet
 from typing import Any, Literal, Type, TypeVar, Union
 
 from sqlalchemy import String, LargeBinary, DateTime
@@ -23,6 +27,20 @@ _store_global = {}
 
 is_initialised = False
 _sessionmaker: sessionmaker[Session] | None = None
+
+
+def _get_fernet(password: str, salt: bytes) -> Fernet:
+    kdf = Scrypt(
+        salt=salt,
+        length=32,
+        n=2**14,
+        r=8,
+        p=1,
+    )
+    key = kdf.derive(password.encode())
+    b64_key = base64.urlsafe_b64encode(key)
+    return Fernet(b64_key)
+
 
 def initialise(
         postgres_user: str,
@@ -55,6 +73,7 @@ def initialise(
         value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
         type: Mapped[str] = mapped_column(String, nullable=False)
         expiry: Mapped[dt] = mapped_column(DateTime)
+        salt: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
 
     sqlalchemy_build(base=_Base, engine=_engine, schema_name=postgres_schema)
 
@@ -74,6 +93,7 @@ def store(
         key: str, value: Any,
         thread_name: str | None = None,
         expiry: td | None = None,
+        encryption_key: str | None = None,
     ):
     """
     Store a value in the store.
@@ -88,7 +108,16 @@ def store(
     - `thread_name`: The name of the thread to store the value in.
         Defaults to the current thread's name. However
         can be used to share a common store between threads.
+    - `encryption_key`: An optional encryption key to encrypt when using Postgres.
     """
+    salt = os.urandom(16)
+    def _encr_data(data: bytes) -> bytes:
+        if not encryption_key:
+            return data
+        f = _get_fernet(encryption_key, salt)
+        value_bytes = pickle.dumps(value)
+        return f.encrypt(value_bytes)
+
     if thread_name is None:
         thread_name = threading.current_thread().name
     if storage_type == 'postgres':
@@ -98,9 +127,10 @@ def store(
             data = pickle.dumps(value)
             item = KvdbItemModel(
                 key=key,
-                value=data,
+                value=_encr_data(data) if encryption_key else data,
                 type=type(value).__name__,
-                expiry=(dt.now() + expiry) if expiry else None
+                expiry=(dt.now() + expiry) if expiry else None,
+                salt=salt if encryption_key else None
             )
             tx.merge(item)
     elif storage_type == 'local':
@@ -118,6 +148,7 @@ def get(
         storage_type: Literal['postgres', 'local', 'global'],
         thread_name: str | None = None,
         no_key_return: Literal['none', 'exception'] = 'none',
+        encryption_key: str | None = None,
     ) -> Union[T, None]:
     """
     Get a value from the store.
@@ -153,7 +184,18 @@ def get(
                     raise Exception(f'Invalid no_key_return: {no_key_return}')
             if item.expiry < dt.now():
                 return None
-            result = pickle.loads(item.value)
+            data = item.value
+            if item.salt is None and encryption_key is not None:
+                raise Exception(f'Key {key} is not encrypted, but encryption_key was provided')
+            if item.salt and not encryption_key:
+                raise Exception(f'Key {key} is encrypted, but no encryption_key was provided')
+            if encryption_key:
+                f = _get_fernet(encryption_key, item.salt)
+                try:
+                    data = f.decrypt(data)
+                except Exception:
+                    raise Exception(f'Failed to decrypt kvdb key {key}.')
+            result = pickle.loads(data)
             if not isinstance(result, as_type):
                 raise Exception(f'Key {key} found but type mismatch: expected {as_type.__name__}, got {type(result).__name__}')
         return result
