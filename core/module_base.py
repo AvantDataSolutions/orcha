@@ -442,6 +442,16 @@ class PythonSource(SourceBase, Generic[GenericEntity]):
 
 
 @dataclass
+class NonDataSinkBase(ModuleBase):
+    """
+    This is the base class for all sinks that do not use dataframes.
+    This is primarily provided for value-add sinks that send non-dataframe
+    data to any arbitrary destination; binary files, images, etc.
+    """
+    pass
+
+
+@dataclass
 class SinkBase(ModuleBase):
     """
     This is the base class for all sinks. This is always extended
@@ -501,6 +511,27 @@ class DatabaseSink(SinkBase):
             index=self.index,
             **kwargs
         )
+
+
+@dataclass
+class BinarySink(NonDataSinkBase):
+    """
+    A generic sink that takes arbitrary bytes and writes them out.
+    The save_bytes method is to be implemented by the specific sink type.
+    """
+
+    @module_function
+    def save(self, data: pd.DataFrame, **kwargs) -> None:
+        raise NotImplementedError('save() is not a valid method for BinarySink, use save_bytes() instead')
+
+    @module_function
+    def save_bytes(self, *args, **kwargs) -> None:
+        """
+        Calls the sink function with the data as the first argument
+        and the data entity as the second argument and any kwargs after that
+        """
+        raise NotImplementedError(f'{__class__.__name__} does not implement save_bytes')
+
 
 # Define the type of the inputs for Transformers and Validations
 T = TypeVar('T')
