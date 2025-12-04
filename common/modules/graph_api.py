@@ -3,13 +3,15 @@ from __future__ import annotations
 import base64
 import io
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+from requests.exceptions import HTTPError
 
 import pandas as pd
 
-from orcha.core.module_base import EntityBase, SourceBase, module_function
+from orcha.core.module_base import EntityBase, SourceBase, module_function, BinarySink
 from orcha.utils import graph_api
 
+_BASE_SITE_URL = "https://graph.microsoft.com/v1.0/sites"
 
 @dataclass
 class _User:
@@ -86,6 +88,12 @@ class SharedDriveItem:
     _file_bytes: bytes | None = None
 
     @staticmethod
+    def _encode_share_url(share_url: str) -> str:
+        """Convert a share URL into the Graph API encoded identifier."""
+        base64_value = base64.b64encode(share_url.encode()).decode()
+        return base64_value.rstrip('=').replace('/', '_').replace('+', '-')
+
+    @staticmethod
     def from_dict(request_dict: dict) -> 'SharedDriveItem':
         """
         Takes the text from a request and returns a SharedDriveItem object.
@@ -109,8 +117,7 @@ class SharedDriveItem:
         """
         Given a share URL and a token, returns the file name and the file data.
         """
-        base64_value = base64.b64encode(share_url.encode()).decode()
-        encoded_url = base64_value.rstrip('=').replace('/', '_').replace('+', '-')
+        encoded_url = SharedDriveItem._encode_share_url(share_url)
         filedata_endpoint = f'https://graph.microsoft.com/v1.0/shares/u!{encoded_url}/driveItem'
         file_metadata = graph_api.do_get(filedata_endpoint, token)
         shared_drive_item = SharedDriveItem.from_dict(file_metadata.json())
@@ -231,7 +238,18 @@ class ItemList:
         return items_df
 
 
-class AppOnlyEntity(EntityBase):
+class MsalBaseEntity(EntityBase):
+    """
+    Base Entity for MSAL authentication flows.
+    """
+    def get_token(self):
+        """
+        Abstract method to get a token.
+        """
+        raise NotImplementedError('get_token must be implemented by subclasses.')
+
+
+class AppOnlyEntity(MsalBaseEntity):
     """
     Entity for App-Only flow. This is recommended for server-to-server communication
     however is limited to scope-based permissions and broad access such as File.Read.All
@@ -261,7 +279,7 @@ class AppOnlyEntity(EntityBase):
         )
 
 
-class ResourceOwnerEntity(EntityBase):
+class ResourceOwnerEntity(MsalBaseEntity):
     """
     Entity for Resource Owner Password Credential (ROPC) flow.
     NOTE: The ROPC flow requires a username and password and NO MFA enabled.
@@ -288,6 +306,76 @@ class ResourceOwnerEntity(EntityBase):
         return graph_api.get_msal_token_resource_owner_login(
             self.client_id, self.authority, self.user_name, self.password
         )
+
+
+@dataclass
+class GraphApiBinaryFileSink(BinarySink):
+    """
+    Sink to write binary files to a SharePoint location via a sharing URL.
+    This will create any necessary folders along the path.
+    e.g., /General/SubFolder/file.txt
+    """
+    data_entity: MsalBaseEntity
+    site_id: str | None = None
+
+    @module_function
+    def save_bytes(
+            self,
+            data: bytes,
+            item_path: str,
+            conflict_behavior: Literal['fail', 'replace'] = 'replace'
+        ):
+        # GET /sites/{site-id}/drive/root:/{item-path}
+        token = self.data_entity.get_token()
+        try:
+            url = f'{_BASE_SITE_URL}/{self.site_id}/drive/root:{item_path}:/content'
+            response = graph_api.do_get(
+                endpoint=url,
+                token=token,
+            )
+            exists = True
+        except HTTPError:
+            exists = False
+
+        if exists and conflict_behavior == 'fail':
+            raise FileExistsError(f'File at {item_path} already exists.')
+
+        if exists and conflict_behavior == 'replace':
+            url = f'{_BASE_SITE_URL}/{self.site_id}/drive/root:/{item_path}:/content'
+            response = graph_api.do_put(
+                endpoint=url,
+                token=token,
+                data=data
+            )
+
+        if not exists:
+            # We helpfully check and create all folders along the way
+            folders = item_path.strip('/').split('/')[:-1]
+            current_path = '/'
+            for folder in folders:
+                create_folder_url = f'{_BASE_SITE_URL}/{self.site_id}/drive/root:/{current_path}:/children'
+                folder_metadata = {
+                    "name": folder,
+                    "folder": {},
+                    "@microsoft.graph.conflictBehavior": "fail"
+                }
+                try:
+                    graph_api.do_post(
+                        endpoint=create_folder_url,
+                        token=token,
+                        data=folder_metadata
+                    )
+                except HTTPError:
+                    pass  # We expect to fail where folders exist
+                current_path = (current_path + f'/{folder}').replace('//', '/')
+            url = f'{_BASE_SITE_URL}/{self.site_id}/drive/root:/{item_path}:/content'
+            response = graph_api.do_put(
+                endpoint=url,
+                token=token,
+                data=data
+            )
+
+        return response
 
 
 @dataclass
