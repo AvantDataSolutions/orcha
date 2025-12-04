@@ -347,6 +347,7 @@ class DatabaseEntity(EntityBase):
         data.to_sql(table.name, self.engine, if_exists=if_exists, index=index, **kwargs)
 
 
+@dataclass
 class RestEntity(EntityBase):
     """
     The base class for all rest entities which provides the url.
@@ -354,6 +355,7 @@ class RestEntity(EntityBase):
     url: str
 
 
+@dataclass
 class PythonEntity(EntityBase):
     """
     The base class for all python entities which provides the data.
@@ -414,15 +416,18 @@ class DatabaseSource(SourceBase):
             return self.data_entity.read_sql(self.query, **kwargs)
 
 
+# Used by PythonSource to bind a specific source type to its callable
+GenericEntity = TypeVar('GenericEntity', bound=EntityBase)
+
 @dataclass
-class PythonSource(SourceBase):
+class PythonSource(SourceBase, Generic[GenericEntity]):
     """
     A generic source that executes arbitrary python code
     to return any data that is required.
     Returns a dataframe.
     """
-    data_entity: PythonEntity | None
-    function: Callable[[PythonEntity], pd.DataFrame]
+    data_entity: GenericEntity | None
+    function: Callable[[GenericEntity], pd.DataFrame]
 
     @module_function
     def get(self, **kwargs) -> pd.DataFrame:
