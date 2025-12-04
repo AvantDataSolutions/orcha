@@ -19,19 +19,21 @@ class RestEntity(EntityBase):
     to allow for dynamic headers and cookies based authentication.
     Username and password are optional and will be passed for
     basic authentication if provided.
+    The create_headers and create_cookies functions will be passed
+    the current RestEntity instance for using url, password, etc.
     """
     url: str
     headers: dict | None = None
-    create_headers: Callable[[], dict] | None = None
+    create_headers: Callable[[RestEntity], dict] | None = None
     cookies: RequestsCookieJar  | None = None
-    create_cookies: Callable[[], RequestsCookieJar ] | None = None
+    create_cookies: Callable[[RestEntity], RequestsCookieJar ] | None = None
 
     def __init__(
             self, module_idk: str, description: str,
             url: str, headers: dict | None = None,
-            create_headers: Callable[[], dict] | None = None,
+            create_headers: Callable[[RestEntity], dict] | None = None,
             cookies: RequestsCookieJar  | None = None,
-            create_cookies: Callable[[], RequestsCookieJar ] | None = None,
+            create_cookies: Callable[[RestEntity], RequestsCookieJar ] | None = None,
             # User and password are optional for convenience
             user_name: str = '',
             password: str = ''
@@ -118,13 +120,13 @@ class RestSource(SourceBase):
                 # Remove the last '&'
                 url_with_query = url_with_query[:-1]
             if self.data_entity.create_headers is not None:
-                cur_headers = self.data_entity.create_headers()
+                cur_headers = self.data_entity.create_headers(self.data_entity)
             elif self.data_entity.headers is not None:
                 cur_headers = self.data_entity.headers
             else:
                 cur_headers = {}
             if self.data_entity.create_cookies is not None:
-                cur_cookies = self.data_entity.create_cookies()
+                cur_cookies = self.data_entity.create_cookies(self.data_entity)
             elif self.data_entity.cookies is not None:
                 cur_cookies = self.data_entity.cookies
             else:
@@ -161,7 +163,6 @@ class RestSource(SourceBase):
                 return self.postprocess(response)
             else:
                 return pd.DataFrame(response.json())
-
 
 @dataclass
 class RestSink(SinkBase):
@@ -226,13 +227,13 @@ class RestSink(SinkBase):
                 # Remove the last '&'
                 url_with_query = url_with_query[:-1]
             if self.data_entity.create_headers is not None:
-                cur_headers = self.data_entity.create_headers()
+                cur_headers = self.data_entity.create_headers(self.data_entity)
             elif self.data_entity.headers is not None:
                 cur_headers = self.data_entity.headers
             else:
                 cur_headers = {}
             if self.data_entity.create_cookies is not None:
-                cur_cookies = self.data_entity.create_cookies()
+                cur_cookies = self.data_entity.create_cookies(self.data_entity)
             elif self.data_entity.cookies is not None:
                 cur_cookies = self.data_entity.cookies
             else:
