@@ -29,6 +29,23 @@ def do_post(endpoint: str, token: str, data: dict):
     return response
 
 
+def do_put(endpoint: str, token: str, data: bytes, content_type: str = 'application/octet-stream'):
+    """
+    General function to upload bytes to the Graph API with a token and
+    raises an exception if the response is not successful.
+    """
+    response = requests.put(
+        endpoint,
+        headers={
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': content_type
+        },
+        data=data
+    )
+    response.raise_for_status()
+    return response
+
+
 def get_msal_token_app_only_login(
         client_id: str,
         client_secret: str,
