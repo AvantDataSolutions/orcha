@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import insert as sqla_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.mssql import NVARCHAR
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.row import Row
@@ -359,9 +360,7 @@ def mssql_upsert(
 
         temp_table = f'#temp_{token_hex(16)}'
         merge_on = [column.name for column in table_inspect.primary_key]
-        # Using source columns for cases such as system versioned tables
-        # where the target table has extra columns that are not in the source
-        non_pk_cols = [c for c in data.columns if c not in merge_on]
+        non_pk_cols = [c.name for c in table_inspect.columns if c.name not in merge_on]
 
         if len(merge_on) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
@@ -374,6 +373,25 @@ def mssql_upsert(
         if schema_str[-1] != ']':
             schema_str = schema_str + ']'
 
+        dtype_map = {}
+        for col in data.columns:
+            # treat object/string dtypes as text; pick length from table definition if available,
+            # otherwise use the max length observed in the data (or 200 as a safe default)
+            if data[col].dtype == object or str(data[col].dtype).startswith('string'):
+                try:
+                    col_def = table_inspect.columns[col]
+                    length = getattr(col_def.type, 'length', None)
+                except Exception:
+                    length = None
+                if length is None or length <= 0:
+                    try:
+                        sample_max = int(data[col].astype(str).str.len().max())
+                        length = max(1, min(4000, sample_max or 200))
+                    except Exception:
+                        length = 200
+                dtype_map[col] = NVARCHAR(length)
+
+
         data.to_sql(
             name=temp_table,
             schema=schema_str,
@@ -381,6 +399,7 @@ def mssql_upsert(
             method='multi',
             chunksize=CHUNK_SIZE,
             index=False,
+            dtype=dtype_map
         )
 
         # Just in case the database collation is different to server collation
