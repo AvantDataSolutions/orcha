@@ -360,7 +360,13 @@ def mssql_upsert(
 
         temp_table = f'#temp_{token_hex(16)}'
         merge_on = [column.name for column in table_inspect.primary_key]
-        non_pk_cols = [c.name for c in table_inspect.columns if c.name not in merge_on]
+        non_pk_cols = [
+            c.name
+            for c in table_inspect.columns if c.name not in merge_on
+        ]
+        # Remove any columns that aren't in the data to avoid column
+        # name errors; e.g. __valid_to in temporal tables
+        non_pk_cols = [c for c in non_pk_cols if c in data.columns]
 
         if len(merge_on) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
