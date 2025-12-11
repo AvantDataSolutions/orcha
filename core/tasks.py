@@ -1089,7 +1089,8 @@ class RunItem():
     def get_latest(
             task: str | TaskItem,
             schedule: ScheduleSet | None = None,
-            run_type: RunType | None = None
+            run_type: RunType | None = None,
+            status: RunStatus | None = None,
         ) -> RunItem | None:
         """
         Returns the latest run (scheduled time descending) for a task and schedule set.
@@ -1116,6 +1117,8 @@ class RunItem():
                         "set_idk not set: cannot get runs for schedule set without id"
                     )
                 filter_sets.append(RunRecord.set_idf == schedule.set_idk)
+            if status is not None:
+                filter_sets.append(RunRecord.status == status)
             record = (
                 session.query(RunRecord)
                 .filter(*filter_sets)

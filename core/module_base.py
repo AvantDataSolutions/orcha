@@ -6,6 +6,8 @@ from datetime import datetime as dt
 from functools import wraps
 from typing import Callable, Generic, Literal, TypeVar
 
+import inspect as py_inspect
+
 import pandas as pd
 from sqlalchemy import Column, Index, MetaData, Table, inspect
 from sqlalchemy.engine import Engine
@@ -18,6 +20,13 @@ from orcha.utils.log import LogManager
 from orcha.utils.sqlalchemy import create_table
 
 _module_log = LogManager('module_base')
+
+ModuleTypes = Literal[
+    'SourceBase',
+    'SinkBase',
+    'TransformBase',
+    'Other'
+]
 
 
 @dataclass
@@ -54,6 +63,18 @@ def module_function(func):
     """
     @wraps(func)
     def wrapper(module_base: ModuleBase, *args, **kwargs):
+        owner_cls = py_inspect.getmro(module_base.__class__)[0]
+        module_type = 'Other'
+        entity: EntityBase | None = None
+        if owner_cls is not None:
+            if issubclass(owner_cls, SourceBase):
+                entity = getattr(module_base, 'data_entity', None)
+                module_type = 'SourceBase'
+            elif issubclass(owner_cls, SinkBase):
+                entity = getattr(module_base, 'data_entity', None)
+                module_type = 'SinkBase'
+            elif issubclass(owner_cls, TransformBase):
+                module_type = 'TransformBase'
         # Either use any retry config passed in or use the global one
         module_config = kwargs.get('module_config', GLOBAL_MODULE_CONFIG)
         # get the number of retries for this module, quietly passed via kwargs
@@ -83,6 +104,8 @@ def module_function(func):
                 duration = (end_time - start_time).total_seconds()
                 current_run_times.append({
                     'module_idk': module_base.module_idk,
+                    'module_type' : module_type,
+                    'module_entity': entity.module_idk if entity else None,
                     'start_time_posix': start_time.timestamp(),
                     'end_time_posix': end_time.timestamp(),
                     'duration_seconds': round(duration, 3),
@@ -113,6 +136,8 @@ def module_function(func):
             key='current_run_times',
             value=current_run_times
         )
+        # print the entire kvdb for debugging
+        # print(kvdb.)
         # return the value from the function
         return func_return_value
 
@@ -375,11 +400,48 @@ class SourceBase(ModuleBase):
     """
     data_entity: EntityBase | None
 
-    def __init__(self, data_entity: EntityBase) -> None:
-        """
-        data_entity: The data entity to use for this source
-        """
-        raise NotImplementedError(f'{__class__.__name__} does not implement __init__')
+    # def __getattribute__(self, name):
+    #     # Intercept access to "get" and return a wrapper that prints the
+    #     # concrete class name before delegating to the real method.
+    #     if name == 'get':
+    #         try:
+    #             orig = object.__getattribute__(self, name)
+    #         except AttributeError:
+    #             raise
+    #         if callable(orig):
+    #             from functools import wraps
+    #             # bind orig and classname into default args to avoid creating closure freevars
+    #             def _get_wrapper(*args, _orig=orig, _cls_name=self.__class__.__name__, **kwargs):
+    #                 # Print the extending class name once
+    #                 print(_cls_name)
+    #                 # Call the original exactly once and capture its result
+    #                 result = _orig(*args, **kwargs)
+    #                 # Inspect the single returned value without re-calling the function
+    #                 try:
+    #                     import pandas as _pd  # local import to avoid heavy import at module load
+    #                     if isinstance(result, _pd.DataFrame):
+    #                         row_count = len(result)
+    #                         print(f'rows: {row_count}')
+    #                         # optional metadata store; swallow errors to avoid breaking the call
+    #                         try:
+    #                             kvdb.store(
+    #                                 storage_type='local',
+    #                                 key=f'last_get_{self.module_idk}',
+    #                                 value={
+    #                                     'module_idk': self.module_idk,
+    #                                     'timestamp': dt.now().isoformat(),
+    #                                     'row_count': row_count
+    #                                 }
+    #                             )
+    #                         except Exception:
+    #                             pass
+    #                 except Exception:
+    #                     # if pandas isn't available or inspection fails, ignore
+    #                     pass
+    #                 return result
+    #             _get_wrapper = wraps(orig)(_get_wrapper)
+    #             return _get_wrapper
+    #     return object.__getattribute__(self, name)
 
     @module_function
     def get(self, **kwargs) -> pd.DataFrame:
