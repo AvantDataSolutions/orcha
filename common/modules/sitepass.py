@@ -516,6 +516,27 @@ def _get_team_members(entity: SitepassApiEntity) -> pd.DataFrame:
     df = pd.DataFrame(records)
     return df
 
+#######################################################################
+# User-Facing Helpers
+#######################################################################
+
+def sitepass_simple_scrape_request(
+        scrape_entity: SitepassScrapeEntity,
+        url: str
+    ) -> requests.Response:
+
+    headers = scrape_entity.headers
+    if scrape_entity.create_headers:
+        headers = scrape_entity.create_headers(scrape_entity)
+    return requests.get(
+        url=url,
+        headers=headers,
+        cookies=_get_sitepass_creds(scrape_entity)
+    )
+
+#######################################################################
+# Orcha Module Classes
+#######################################################################
 
 class SitepassScrapeEntity(RestEntity):
     def __init__(
