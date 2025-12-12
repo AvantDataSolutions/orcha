@@ -50,7 +50,7 @@ def postgres_partial_scaffold(
     Postgres specific connection parameters are set here.
     """
     engine = create_engine(
-        f'postgresql://{user}:{passwd}@{server}/{db}?application_name={application_name}',
+        f'postgresql+psycopg://{user}:{passwd}@{server}/{db}?application_name={application_name}',
         pool_size=50,
         max_overflow=2,
         pool_recycle=300,
