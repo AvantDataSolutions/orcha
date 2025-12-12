@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Generic, Literal, Mapping, TypeVar
 
 import pandas as pd
 import requests
@@ -50,9 +50,11 @@ class RestEntity(EntityBase):
         self.cookies = cookies
         self.create_cookies = create_cookies
 
+T = TypeVar('T', bound=Mapping[str, Any])
+T2 = TypeVar('T2', bound=Mapping[str, Any])
 
 @dataclass
-class RestSource(SourceBase):
+class RestSource(SourceBase, Generic[T, T2]):
     """
     A source that calls a rest endpoint and returns the response.
     """
@@ -62,6 +64,7 @@ class RestSource(SourceBase):
     sub_path: str | None = None
     query_params: dict | None = None
     postprocess: Callable[[requests.Response], pd.DataFrame] | None = None
+    postprocess_kwargs: T2 | None = None
 
     @module_function
     def get(
@@ -69,8 +72,9 @@ class RestSource(SourceBase):
             sub_path_override: str | None = None,
             request_data_override: dict | str | None = None,
             query_params_merge: dict | None = None,
+            path_lookup_values: T | None = None,
             request_kwargs: dict[str, Any] = {},
-            **kwargs
+            postprocess_kwargs_override: T2 | None = None
         ) -> pd.DataFrame:
         """
         Calls the rest endpoint and returns the response.
@@ -85,11 +89,19 @@ class RestSource(SourceBase):
         sub_path/query_params: These are provided as a dynamic override
         for those set in the source.
         request_kwargs: kwargs are passed to the requests.request method.
+        path_lookup_values: A dictionary of values to replace in the sub_path.
         """
         if sub_path_override is not None:
             sub_path = sub_path_override
         else:
             sub_path = self.sub_path
+
+        if sub_path and path_lookup_values:
+            try:
+                sub_path = sub_path.format(**path_lookup_values)
+            except Exception:
+                for k, v in path_lookup_values.items():
+                    sub_path = sub_path.replace(str(k), str(v))
 
         if self.query_params is not None:
             if query_params_merge is not None:
@@ -157,10 +169,12 @@ class RestSource(SourceBase):
             if response.status_code != 200:
                 raise Exception('\n'.join([
                     f'Response status code is not 200: {response.status_code}',
+                    f'URL: {url_with_query}',
                     f'Response text: {response.text[:1000]}'
                 ]))
+            pp_kwargs = postprocess_kwargs_override or self.postprocess_kwargs or {}
             if self.postprocess is not None:
-                return self.postprocess(response)
+                return self.postprocess(response, **pp_kwargs)
             else:
                 return pd.DataFrame(response.json())
 

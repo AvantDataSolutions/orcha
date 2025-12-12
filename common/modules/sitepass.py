@@ -1,6 +1,6 @@
-
 from __future__ import annotations
 
+import os
 import io
 import json
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ from datetime import timedelta as td
 from time import sleep
 import traceback
 import time
+from typing import Any, TypedDict
 
 import pandas as pd
 import requests
@@ -507,6 +508,7 @@ def _get_team_members(entity: SitepassApiEntity) -> pd.DataFrame:
         base_url=entity.url,
         endpoint='/team'
     )
+
     if team is None:
         raise Exception('API Call failed')
 
@@ -515,6 +517,7 @@ def _get_team_members(entity: SitepassApiEntity) -> pd.DataFrame:
         try:
             record = _parse_team_member_record(member)
             records.append(record)
+
         except Exception as e:
             print(f"Error parsing team member {member.get('id')}: {e}")
 
@@ -527,11 +530,14 @@ class SitepassScrapeEntity(RestEntity):
             self,
             module_idk: str,
             description: str,
-            base_url: str,
             user_name: str,
             password: str,
+            client_ids: list[int],
+            base_url: str = 'https://app.mysitepass.com/wms/api/v1',
             headers: dict | None = None,
         ):
+
+        self.client_ids = client_ids
 
         super().__init__(
             module_idk=module_idk,
@@ -611,26 +617,6 @@ class SitepassTeamMembersSource(PythonSource):
     )
 
 
-# sitepass_get_visits_source = RestSource(
-#     module_idk='sitepass_get_visits_source',
-#     description='Source for Sitepass Get Visits',
-#     data_entity=sitepass_scrape_entity,
-#     sub_path='vms/visits',
-#     query_params=None,
-#     request_type='POST',
-#     postprocess=lambda response: pd.DataFrame(response.json()['data']),
-#     request_data={
-#         '$currentPage': 1,
-#         'view': ['list'],
-#         'limit': '1000',
-#         'sortBy': 'checkIn.checkInEndTime',
-#         'sortOrder': 'desc',
-#         'checkInDate': {'dateRange':'LAST_12_MONTHS'},
-#         'nextindex': 0
-#     }
-# )
-
-
 class SitepassVisitsSource(RestSource):
     def __init__(
             self,
@@ -656,3 +642,171 @@ class SitepassVisitsSource(RestSource):
                 'nextindex': 0
             }
     )
+
+class _SitepassWorkflowPathLookup(TypedDict):
+    WORKER_ID: str
+    STEP_ID: str
+    CLIENT_ID: str
+
+
+class _SitepassWorkflowPostprocessArgs(TypedDict):
+    output_folder: str
+
+
+class SitepassTeamMemberWorkflowStepSource(RestSource[_SitepassWorkflowPathLookup, _SitepassWorkflowPostprocessArgs]):
+    def __init__(
+            self,
+            module_idk: str,
+            description: str,
+            scrape_entity: SitepassScrapeEntity,
+            output_folder: str | None = None
+        ):
+        pp_args = None
+        if output_folder:
+            pp_args = _SitepassWorkflowPostprocessArgs(output_folder=output_folder)
+        super().__init__(
+            module_idk=module_idk,
+            description=description,
+            data_entity=scrape_entity,
+            sub_path='/workers/{WORKER_ID}/steps/{STEP_ID}?client={CLIENT_ID}',
+            query_params=None,
+            request_type='GET',
+            postprocess=_get_worker_workflow_step,
+            postprocess_kwargs=pp_args
+        )
+
+
+def _get_worker_workflow_step(
+        response: requests.Response,
+        output_folder: str | None = None
+    ) -> pd.DataFrame:
+
+    class Resources(TypedDict):
+        resource_id: int
+        file_name: str
+        file_size_in_kb: int
+        file_type: str
+        created: int
+
+    class FieldData(TypedDict):
+        field_id: str
+        field_type: str
+        value: str | None
+        resources: list[Resources]
+
+    def _process_field(subsection_id: str, field_group: dict) -> FieldData:
+        field_type = field_group.get('type', '')
+        field_id = field_group.get('id', '')
+
+        if field_type == 'wmsDate' or field_type == 'wmsExpiryDate':
+            values = field_group.get('values', [])
+            value = values[0] if values else None
+            return FieldData(
+                field_id=field_id,
+                field_type=field_type,
+                value=value,
+                resources=[]
+            )
+        elif field_type == 'wmsFile':
+            resources_list: list[Resources] = []
+            resources = field_group.get('resources', [])
+            for res in resources:
+                resource_info = res.get('resource', {})
+                res_url = resource_info.get('downloadUrl', '')
+                if res_url and output_folder is not None:
+                    # Download the file bytes
+                    file_response = requests.get(res_url)
+                    if file_response.status_code == 200:
+                        folder_path = f'{output_folder}/{worker_id}/{step_id}/{subsection_id}'
+                        folder_path = folder_path.replace('//', '/')
+                        os.makedirs(folder_path, exist_ok=True)
+                        if 'resourceId' not in resource_info:
+                            raise Exception('No resourceId in resource info')
+                        if 'fileName' not in resource_info:
+                            raise Exception('No fileName in resource info')
+                        res_id = resource_info['resourceId']
+                        file_name = resource_info['fileName']
+                        file_extension = os.path.splitext(file_name)[1]
+                        with open(f'{folder_path}/{res_id}{file_extension}', 'wb') as f:
+                            f.write(file_response.content)
+                    else:
+                        raise Exception(
+                            f'Failed to download resource file from: {res_url}' +
+                            f' For field ID: {field_id}'
+                        )
+                resource = Resources(
+                    resource_id=resource_info['resourceId'],
+                    file_name=resource_info.get('fileName', ''),
+                    file_size_in_kb=resource_info.get('fileSizeKb', 0),
+                    file_type=resource_info.get('fileType', ''),
+                    created=resource_info.get('created', 0)
+                )
+                resources_list.append(resource)
+            return FieldData(
+                field_id=field_id,
+                field_type=field_type,
+                value=None,
+                resources=resources_list
+            )
+        elif field_type in ['ui-select-single-search']:
+            values = field_group.get('values', [])
+            value_id_map = field_group.get('valueIdMap', {})
+            value = None
+            if values:
+                value_key = str(values[0])
+                value = value_id_map.get(value_key, value_key)
+            return FieldData(
+                field_id=field_id,
+                field_type=field_type,
+                value=value,
+                resources=[]
+            )
+        elif field_type == 'input':
+            values = field_group.get('values', [])
+            value = values[0] if values else None
+            return FieldData(
+                field_id=field_id,
+                field_type=field_type,
+                value=value,
+                resources=[]
+            )
+        else:
+            raise Exception(f'Unsupported field type: {field_type}')
+
+    url = response.url
+    worker_id = url.split('/')[-3]
+    step_id = url.split('/')[-1].split('?')[0]
+
+    form = response.json()
+    # Inelegent type hinting of the structure
+    step_model: dict[str, dict[str, list[dict]]] = form.get('model', {})
+    model_sections = step_model.get('sections', {})
+
+    rows = []
+
+    for section_id, subsections in model_sections.items():
+        for subsection in subsections:
+            subsection_id = subsection.get('id', '')
+            subsection_status = subsection.get('status', '')
+            fieldGroups: list[dict] = subsection.get('fieldGroup', [])
+            for field_group in fieldGroups:
+                try:
+                    field_info = _process_field(subsection_id, field_group)
+                    rows.append({
+                        'worker_id': worker_id,
+                        'step_id': step_id,
+                        'section_id': section_id,
+                        'subsection_id': subsection_id,
+                        'subsection_status': subsection_status,
+                        'field_id': field_info['field_id'],
+                        'field_type': field_info['field_type'],
+                        'field_value': field_info['value'],
+                        'field_resources': field_info['resources']
+                    })
+                except Exception as e:
+                    print(f'Error processing field {field_group.get("id", "")}: {e}')
+                    print(f'For worker {worker_id}, step {step_id}, subsection {subsection_id}')
+                    raise e
+
+
+    return pd.DataFrame(rows)
