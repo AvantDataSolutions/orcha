@@ -1,8 +1,8 @@
 # for Orcha Core
 sqlalchemy>=2,<3
-psycopg2-binary==2.9.9
+psycopg[binary]>=3,<4
 pydantic>=2.6.0,<3.0.0
-croniter>2.0,<3.0
+croniter>6,<7
 pandas>=2.0,<3.0
 
 # for mqueue
