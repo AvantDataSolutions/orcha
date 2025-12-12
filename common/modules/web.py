@@ -56,7 +56,10 @@ T2 = TypeVar('T2', bound=Mapping[str, Any])
 @dataclass
 class RestSource(SourceBase, Generic[T, T2]):
     """
-    A source that calls a rest endpoint and returns the response.
+    A source that calls a rest endpoint and returns the response.\n
+    Takes two generic types:\n
+    - T: The type of the path_lookup_values dictionary.
+    - T2: The type of the postprocess_kwargs dictionary.
     """
     data_entity: RestEntity | None
     request_type: Literal['GET', 'POST', 'PUT', 'DELETE']
