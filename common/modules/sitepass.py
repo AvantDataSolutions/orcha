@@ -220,10 +220,6 @@ def _get_worker_details(worker_id: str, api_key: str, base_url: str) -> pd.DataF
         endpoint=f'/workers/{worker_id}'
     )
 
-    # dump the worker to a file for debugging
-    with open(f'worker_{worker_id}.json', 'w') as f:
-        json.dump(worker, f, indent=4)
-
     if worker is None:
         raise Exception('API Call failed')
     if not isinstance(worker, dict):
