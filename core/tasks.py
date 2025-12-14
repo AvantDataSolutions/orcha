@@ -1514,13 +1514,15 @@ class TaskMonitorBase(MonitorBase, ABC):
             monitor_name: str,
             channel: Channel,
             check_function: Callable[[Channel, Message], None],
-            tasks: set[TaskItem] = set()
+            tasks: set[TaskItem] = set(),
+            exec_function: Callable[[RunItem, int], None] | None = None
         ):
         # Redefine the init method to include the tasks set
         # so that we can add tasks to the monitor in one hit
         # or the monitor can be added to the task on task creation
         super().__init__(alert, monitor_name, channel, check_function)
         self.tasks = tasks
+        self.exec_function = exec_function
 
     def add_task(self, task: TaskItem):
         """
@@ -1543,12 +1545,14 @@ class FailedRunsMonitor(TaskMonitorBase):
             monitor_Name: str,
             alert: AlertBase,
             disable_after_count = 5,
+            exec_function: Callable[[RunItem, int], None] | None = None
         ):
         super().__init__(
             monitor_name=monitor_Name,
             alert=alert,
             channel=MqueueChannels.run_failed,
-            check_function=self.check
+            check_function=self.check,
+            exec_function=exec_function
         )
         self.alert = alert
         self.alert_on = RunStatusEnum.failed.value
@@ -1629,5 +1633,9 @@ class FailedRunsMonitor(TaskMonitorBase):
                     Run ID: {run.run_idk}
                     Run Output: {json.dumps(run.output)}
                 '''
-
+        try:
+            if self.exec_function:
+                self.exec_function(run, fail_count)
+        except Exception as e:
+            print(f'Error executing monitor function: {e}')
         self.alert.send_alert(message=message_string)
