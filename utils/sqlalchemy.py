@@ -258,7 +258,7 @@ def create_table(
 
 
 def sqlalchemy_replace(
-        session: sessionmaker, table: Table, data: pd.DataFrame
+        session: sessionmaker, table: Table, data: pd.DataFrame, chunksize: int = CHUNK_SIZE
     ):
     """
     Replaces the data in a table with the data in a dataframe.
@@ -270,8 +270,8 @@ def sqlalchemy_replace(
         db.execute(delete_stmt)
         # Chunk data to reduce peak memory usage
         # when converting large dataframes to rows
-        for chunk in range(0, len(data), CHUNK_SIZE):
-            rows = data.iloc[chunk:chunk+CHUNK_SIZE].to_dict('records')
+        for chunk in range(0, len(data), chunksize):
+            rows = data.iloc[chunk:chunk+chunksize].to_dict('records')
             # Bug with pymssql when handling nan values, need to convert them to None
             # https://stackoverflow.com/questions/52862703/error-while-inserting-records-with-null-values-into-sql-server-using-pymssql
             for r in rows:
@@ -283,7 +283,7 @@ def sqlalchemy_replace(
 
 
 def postgres_upsert(
-        session: sessionmaker, table: Table, data: pd.DataFrame
+        session: sessionmaker, table: Table, data: pd.DataFrame, chunksize: int = CHUNK_SIZE
     ) -> None:
     """
     Performs an upsert operation on a PostgreSQL table using
@@ -300,7 +300,7 @@ def postgres_upsert(
         index_elements = [column.name for column in table_inspect.primary_key]
         if len(index_elements) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
-        for chunk in [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]:
+        for chunk in [data[i:i+chunksize] for i in range(0, len(data), chunksize)]:
             stmt = pg_insert(table).values(chunk.to_dict('records'))
             update_dict = {}
             for column in table_inspect.columns:
@@ -315,7 +315,7 @@ def postgres_upsert(
 
 
 def sqlite_upsert(
-        session: sessionmaker, table: Table, data: pd.DataFrame
+        session: sessionmaker, table: Table, data: pd.DataFrame, chunksize: int = CHUNK_SIZE
     ) -> None:
     """
     Performs an upsert operation on a SQLite table using
@@ -332,7 +332,7 @@ def sqlite_upsert(
         index_elements = [column.name for column in table_inspect.primary_key]
         if len(index_elements) == 0:
             raise Exception('Cannot upsert on table with no Primary Key')
-        for chunk in [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]:
+        for chunk in [data[i:i+chunksize] for i in range(0, len(data), chunksize)]:
             stmt = sqlite_insert(table).values(chunk.to_dict('records'))
             stmt = stmt.prefix_with('OR REPLACE')
             db.execute(stmt)
@@ -341,7 +341,9 @@ def sqlite_upsert(
 def mssql_upsert(
         data: pd.DataFrame,
         s_maker: sessionmaker[Session],
-        table: Table
+        table: Table,
+        chunksize: int = CHUNK_SIZE,
+        **kwargs
     ):
     """
     Performs an upsert operation on a MSSQL table using
@@ -397,13 +399,13 @@ def mssql_upsert(
                         length = 200
                 dtype_map[col] = NVARCHAR(length)
 
-
+        chunksize = kwargs.get('chunksize', CHUNK_SIZE)
         data.to_sql(
             name=temp_table,
             schema=schema_str,
             con=conn,
             method='multi',
-            chunksize=CHUNK_SIZE,
+            chunksize=chunksize,
             index=False,
             dtype=dtype_map
         )

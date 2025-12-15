@@ -40,7 +40,7 @@ class PostgresEntity(DatabaseEntity):
     def to_sql(
             self, data: pd.DataFrame, table: Table,
             if_exists: Literal['fail', 'replace', 'delete_replace', 'append', 'upsert'] = 'fail',
-            index: bool = False, **kwargs
+            index: bool = False, chunksize: int = 1000, **kwargs
         ) -> None:
         """
         This is a wrapper around pd.to_sql except where 'upsert' is used
@@ -56,13 +56,23 @@ class PostgresEntity(DatabaseEntity):
             return postgres_upsert(
                 session=self.sessionmaker,
                 table=table,
-                data=data
+                data=data,
+                chunksize=chunksize
             )
         elif if_exists == 'delete_replace':
             return sqlalchemy_replace(
                 session=self.sessionmaker,
                 table=table,
-                data=data
+                data=data,
+                chunksize=chunksize
             )
 
-        data.to_sql(table.name, self.engine, if_exists=if_exists, index=index, schema=table.schema, **kwargs)
+        data.to_sql(
+            table.name,
+            self.engine,
+            if_exists=if_exists,
+            index=index,
+            schema=table.schema,
+            chunksize=chunksize,
+            **kwargs
+        )
