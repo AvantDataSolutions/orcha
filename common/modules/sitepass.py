@@ -73,7 +73,13 @@ def _inx_sp_api_call(api_key: str, base_url: str, endpoint: str, next_index = 0,
     metadata = r.json().get('metadata', None)
     if metadata is not None:
         if metadata['currentPage'] < metadata['totalPages']:
-            next_page = _inx_sp_api_call(api_key, url, metadata['nextIndex'], query_params)
+            next_page = _inx_sp_api_call(
+                api_key=api_key,
+                base_url=base_url,
+                endpoint=endpoint,
+                next_index=metadata['nextIndex'],
+                query_params=query_params
+            )
             data += next_page
 
     return data
