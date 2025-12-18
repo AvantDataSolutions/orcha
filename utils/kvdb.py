@@ -6,6 +6,7 @@ import threading
 import pickle
 import base64
 import os
+import tempfile
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.fernet import Fernet
 from typing import Any, Literal, Type, TypeVar, Union
@@ -15,7 +16,6 @@ from sqlalchemy.orm import sessionmaker, Session, Mapped, mapped_column
 
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
-from orcha.core.module_base import GLOBAL_MODULE_CONFIG
 
 print('Loading:',__name__)
 
@@ -27,6 +27,58 @@ _store_global = {}
 
 is_initialised = False
 _sessionmaker: sessionmaker[Session] | None = None
+
+_kvdb_folder = os.path.join(tempfile.gettempdir(), 'orcha_kvdb')
+
+
+@dataclass
+class _KvdbFileRecord():
+    key: str
+    type: str
+    expiry: dt | None
+    salt: bytes | None
+    value: bytes
+    encrypted: bool
+    stored_at: dt
+    storage_type: str
+
+
+def _validate_key_name(key_name: str) -> None:
+    if not key_name or key_name in ('.', '..'):
+        raise Exception('Invalid kvdb key for file storage')
+    if os.path.basename(key_name) != key_name:
+        raise Exception('Invalid kvdb key for file storage')
+    if os.sep in key_name:
+        raise Exception('Invalid kvdb key for file storage')
+    if os.altsep and os.altsep in key_name:
+        raise Exception('Invalid kvdb key for file storage')
+
+
+def _write_record(key_name: str, record: _KvdbFileRecord) -> None:
+    _validate_key_name(key_name)
+    data = pickle.dumps(record)
+    os.makedirs(_kvdb_folder, exist_ok=True)
+    with open(os.path.join(_kvdb_folder, key_name), 'wb') as f:
+        f.write(data)
+
+
+def _read_record(key_name: str) -> _KvdbFileRecord | None:
+    _validate_key_name(key_name)
+    path = os.path.join(_kvdb_folder, key_name)
+    if not os.path.exists(path):
+        return None
+    with open(path, 'rb') as f:
+        data = f.read()
+    return pickle.loads(data)
+
+
+def _delete_record(key_name: str) -> None:
+    _validate_key_name(key_name)
+    path = os.path.join(_kvdb_folder, key_name)
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def _get_fernet(password: str, salt: bytes) -> Fernet:
@@ -81,7 +133,7 @@ def initialise(
 
 @dataclass
 class _KvdbItem():
-    storage_type: Literal['postgres', 'local', 'global']
+    storage_type: Literal['postgres', 'local', 'global', 'file']
     key: str
     value: Any
     type: str
@@ -89,7 +141,7 @@ class _KvdbItem():
 
 
 def store(
-        storage_type: Literal['postgres', 'local', 'global'],
+        storage_type: Literal['postgres', 'local', 'global', 'file'],
         key: str, value: Any,
         thread_name: str | None = None,
         expiry: td | None = None,
@@ -133,6 +185,21 @@ def store(
                 salt=salt if encryption_key else None
             )
             tx.merge(item)
+    elif storage_type == 'file':
+        exp_time = dt.now() + expiry if expiry else None
+        payload_value = pickle.dumps(value)
+        value_bytes = _encr_data(payload_value) if encryption_key else payload_value
+        record = _KvdbFileRecord(
+            key=key,
+            type=type(value).__name__,
+            expiry=exp_time,
+            salt=salt if encryption_key else None,
+            value=value_bytes,
+            encrypted=bool(encryption_key),
+            stored_at=dt.now(),
+            storage_type='file',
+        )
+        _write_record(key, record)
     elif storage_type == 'local':
         exp_time = dt.now() + expiry if expiry else None
         item = _KvdbItem(storage_type, key, value, type(value).__name__, exp_time)
@@ -145,7 +212,7 @@ def store(
 
 def get(
         key: str, as_type: Type[T],
-        storage_type: Literal['postgres', 'local', 'global'],
+        storage_type: Literal['postgres', 'local', 'global', 'file'],
         thread_name: str | None = None,
         no_key_return: Literal['none', 'exception'] = 'none',
         encryption_key: str | None = None,
@@ -182,7 +249,7 @@ def get(
                     raise Exception(f'Key {key} not found in store')
                 else:
                     raise Exception(f'Invalid no_key_return: {no_key_return}')
-            if item.expiry < dt.now():
+            if item.expiry is not None and item.expiry < dt.now():
                 return None
             data = item.value
             if item.salt is None and encryption_key is not None:
@@ -198,6 +265,46 @@ def get(
             result = pickle.loads(data)
             if not isinstance(result, as_type):
                 raise Exception(f'Key {key} found but type mismatch: expected {as_type.__name__}, got {type(result).__name__}')
+        return result
+    elif storage_type == 'file':
+        if not os.path.exists(os.path.join(_kvdb_folder, key)):
+            if no_key_return == 'none':
+                return None
+            if no_key_return == 'exception':
+                raise Exception(f'Key {key} not found in store')
+            raise Exception(f'Invalid no_key_return: {no_key_return}')
+
+        record = _read_record(key)
+
+        if record is None:
+            if no_key_return == 'none':
+                return None
+            if no_key_return == 'exception':
+                raise Exception(f'Key {key} not found in store')
+            raise Exception(f'Invalid no_key_return: {no_key_return}')
+
+        expiry_at = record.expiry
+        if expiry_at is not None and expiry_at < dt.now():
+            return None
+
+        data = record.value
+        salt_bytes = record.salt
+        if salt_bytes is None and encryption_key is not None:
+            raise Exception(f'Key {key} is not encrypted, but encryption_key was provided')
+        if encryption_key:
+            if not salt_bytes:
+                raise Exception(f'Key {key} is not encrypted, but encryption_key was provided')
+            f = _get_fernet(encryption_key, salt_bytes)
+            try:
+                data = f.decrypt(data)
+            except Exception:
+                raise Exception(f'Failed to decrypt kvdb key {key}.')
+
+        result = pickle.loads(data)
+        if not isinstance(result, as_type):
+            raise Exception(
+                f'Key {key} found but type mismatch: expected {as_type.__name__}, got {type(result).__name__}'
+            )
         return result
     elif storage_type == 'local':
         if key in _store_threaded[thread_name]:
@@ -281,7 +388,7 @@ def list_items(
 
 
 def delete(
-        storage_type: Literal['postgres', 'local'],
+        storage_type: Literal['postgres', 'local', 'file'],
         key: str,
         thread_name: str | None = None,
     ) -> bool:
@@ -298,5 +405,8 @@ def delete(
         if thread_name not in _store_threaded:
             return False
         return _store_threaded[thread_name].pop(key, None) is not None
+    elif storage_type == 'file':
+        _delete_record(key)
+        return True
     else:
         raise NotImplementedError('Global kvdb storage not implemented')
