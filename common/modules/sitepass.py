@@ -107,6 +107,8 @@ def _get_sitepass_creds(rest_entity: RestEntity) -> RequestsCookieJar:
     auth_creds = {}
     r = requests.post(url, headers=headers, data=payload, allow_redirects=True)
 
+    if r.status_code != 200:
+        raise Exception(f'Failed to get Sitepass scrape credentials with status code {r.status_code}')
     if len(r.cookies) > 0:
         for c in r.cookies:
             auth_creds[c.name] = c.value
