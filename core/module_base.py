@@ -37,6 +37,8 @@ class ModuleConfig():
     - max_retries(int): The maximum number of retries to attempt.
     - retry_interval(int): The interval in seconds at which to retry.
     - notebook_mode(bool): If true, this will print exceptions rather than
+    - kvdb_local_fallback(bool): If true, will attempt to fall back to
+        local kvdb storage when postgres is not available.
     raising them *where possible*. This is intended for use in notebooks
     where only partial credentials are provided for using a few modules
     and the rest of the modules are not intended to be run and therefore
@@ -47,6 +49,7 @@ class ModuleConfig():
     max_retries: int = 1
     retry_interval: int = 10
     notebook_mode: bool = False
+    kvdb_local_fallback: bool = False
 
 
 GLOBAL_MODULE_CONFIG: ModuleConfig = ModuleConfig()
@@ -587,7 +590,7 @@ class BinarySink(NonDataSinkBase):
         raise NotImplementedError('save() is not a valid method for BinarySink, use save_bytes() instead')
 
     @module_function
-    def save_bytes(self, *args, **kwargs) -> None:
+    def save_bytes(self, *args, **kwargs):
         """
         Calls the sink function with the data as the first argument
         and the data entity as the second argument and any kwargs after that

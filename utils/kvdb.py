@@ -18,6 +18,8 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 
 from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
+from orcha.core import module_base
+
 print('Loading:',__name__)
 
 T = TypeVar('T')
@@ -145,7 +147,7 @@ def store(
         storage_type: Literal['postgres', 'local', 'global', 'file'],
         key: str, value: Any,
         thread_name: str | None = None,
-        expiry: td | None = None,
+        expiry: td = dt(year=9000, month=1, day=1) - dt.now(),
         encryption_key: str | None = None,
     ):
     """
@@ -175,14 +177,25 @@ def store(
         thread_name = threading.current_thread().name
     if storage_type == 'postgres':
         if not is_initialised or _sessionmaker is None:
-            raise Exception('KVDB module not initialised for Postgres storage.')
+            if module_base.GLOBAL_MODULE_CONFIG.kvdb_local_fallback:
+                print('KVDB Postgres not initialised, falling back to local storage.')
+                return store(
+                    storage_type='local',
+                    key=key,
+                    value=value,
+                    thread_name=thread_name,
+                    expiry=expiry,
+                    encryption_key=None
+                )
+            else:
+                raise Exception('KVDB module not initialised for Postgres storage.')
         with _sessionmaker.begin() as tx:
             data = pickle.dumps(value)
             item = KvdbItemModel(
                 key=key,
                 value=_encr_data(data) if encryption_key else data,
                 type=type(value).__name__,
-                expiry=(dt.now() + expiry) if expiry else None,
+                expiry=(dt.now() + expiry),
                 salt=salt if encryption_key else None
             )
             tx.merge(item)
@@ -240,7 +253,18 @@ def get(
         _store_threaded[thread_name] = {}
     if storage_type == 'postgres':
         if not is_initialised or _sessionmaker is None:
-            raise Exception('KVDB module not initialised for Postgres storage.')
+            if module_base.GLOBAL_MODULE_CONFIG.kvdb_local_fallback:
+                print('KVDB Postgres not initialised, falling back to local storage.')
+                return get(
+                    key=key,
+                    as_type=as_type,
+                    storage_type='local',
+                    thread_name=thread_name,
+                    no_key_return=no_key_return,
+                    encryption_key=None
+                )
+            else:
+                raise Exception('KVDB module not initialised for Postgres storage.')
         with _sessionmaker.begin() as tx:
             item = tx.get(KvdbItemModel, key)
             if item is None:
