@@ -2,16 +2,35 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 from dataclasses import dataclass
 from typing import Literal, Optional
-from requests.exceptions import HTTPError
 
 import pandas as pd
+from requests.exceptions import HTTPError
 
-from orcha.core.module_base import EntityBase, SourceBase, module_function, BinarySink
+from orcha.core.module_base import BinarySink, EntityBase, SourceBase, module_function
 from orcha.utils import graph_api
 
 _BASE_SITE_URL = "https://graph.microsoft.com/v1.0/sites"
+
+
+#######################################################################
+# Helper functions
+#######################################################################
+
+def sanitize_filename(name):
+    INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*]')
+    name = INVALID_CHARS_RE.sub('_', name)
+    name = name.strip()
+    # remove trailing periods (not allowed on Windows/SharePoint)
+    while name.endswith('.'):
+        name = name[:-1]
+    if len(name) == 0:
+        raise ValueError('Filename cannot be empty after sanitization.')
+    return name
+
+########################################################################
 
 @dataclass
 class _User:
@@ -325,6 +344,12 @@ class GraphApiBinaryFileSink(BinarySink):
             item_path: str,
             conflict_behavior: Literal['fail', 'replace'] = 'replace'
         ):
+        # Sanitize the filename in the item_path
+        path_parts = item_path.rsplit('/', 1)
+        if len(path_parts) == 2:
+            dir_path, file_name = path_parts
+            sanitized_file_name = sanitize_filename(file_name)
+            item_path = f'{dir_path}/{sanitized_file_name}'
         # GET /sites/{site-id}/drive/root:/{item-path}
         token = self.data_entity.get_token()
         try:
@@ -340,15 +365,16 @@ class GraphApiBinaryFileSink(BinarySink):
         if exists and conflict_behavior == 'fail':
             raise FileExistsError(f'File at {item_path} already exists.')
 
-        if exists and conflict_behavior == 'replace':
+        elif exists and conflict_behavior == 'replace':
             url = f'{_BASE_SITE_URL}/{self.site_id}/drive/root:/{item_path}:/content'
             response = graph_api.do_put(
                 endpoint=url,
                 token=token,
                 data=data
             )
+            return response
 
-        if not exists:
+        elif not exists:
             # We helpfully check and create all folders along the way
             folders = item_path.strip('/').split('/')[:-1]
             current_path = '/'
@@ -375,7 +401,10 @@ class GraphApiBinaryFileSink(BinarySink):
                 data=data
             )
 
-        return response
+            return response
+
+        else:
+            raise Exception('Unexpected conflict behavior in GraphApiBinaryFileSink.')
 
 
 @dataclass
@@ -390,7 +419,8 @@ class GraphApiSharedXlsxOrCsvSource(SourceBase):
     def get(
             self,
             share_url: str | None = None,
-            sheet_name: str | int = 0
+            sheet_name: str | int = 0,
+            **kwargs
         ) -> pd.DataFrame:
         """
         Returns a DataFrame from a shared URL of a CSV or XLSX file.
@@ -419,7 +449,7 @@ class GraphApiListSource(SourceBase):
     columns: list[str]
 
     @module_function
-    def get(self, columns: list[str] | None = None) -> pd.DataFrame:
+    def get(self, columns: list[str] | None = None, **kwargs) -> pd.DataFrame:
         """
         Returns a DataFrame from a SharePoint list. Optionally can override the columns.
         #### Parameters
