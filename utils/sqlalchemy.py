@@ -122,7 +122,7 @@ def sqlalchemy_build(base: DeclarativeMeta, engine: Engine, schema_name: str):
     existing_metadata.reflect(bind=engine)
 
     # Compare the existing metadata to the metadata in your code
-    for table_name, table in base.metadata.tables.items(): # type: ignore
+    for table_name, table in base.metadata.tables.items():
         if table_name in existing_metadata.tables:
             if existing_metadata.tables is None:
                 continue
@@ -131,7 +131,7 @@ def sqlalchemy_build(base: DeclarativeMeta, engine: Engine, schema_name: str):
                 raise Exception(f'Table {table} does not match the definition in the code.')
 
 
-    base.metadata.create_all(engine, checkfirst=True) # type: ignore
+    base.metadata.create_all(engine, checkfirst=True)
 
 
 def sqlalchemy_build_schema(schema_name: str, engine: Engine):
