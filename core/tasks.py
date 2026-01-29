@@ -197,7 +197,7 @@ class ScheduleSet():
         a task which allows the same cron schedule to be used on multiple tasks.
         #### Parameters:
         - cron_schedule: The cron schedule for the task
-        - config: The config for the task for this schedule
+        - config: Config is passed to each run created from this schedule set.
         - trigger_task: The task (and schedule set) to be triggered on successful completion
         of this schedule run.
         """
