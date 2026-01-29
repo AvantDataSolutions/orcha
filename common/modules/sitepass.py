@@ -129,9 +129,17 @@ def _get_worker_details(worker_id: str, api_key: str, base_url: str) -> pd.DataF
         user_name: str
         first_name: str
         last_name: str
+        contractor_id: str
+        contractor_name: str
         workflow_status: str
         workflow_steps: list[dict]
         raw_json: dict
+
+    @dataclass
+    class ContractorDetails:
+        contractor_id: str
+        trading_name: str
+        legal_business_name: str
 
     @dataclass
     class Resources():
@@ -204,6 +212,8 @@ def _get_worker_details(worker_id: str, api_key: str, base_url: str) -> pd.DataF
                             'user_name': self.user_name,
                             'first_name': self.first_name,
                             'last_name': self.last_name,
+                            'contractor_id': contractor.contractor_id,
+                            'contractor_name': contractor.trading_name,
                             'workflow_status': self.workflow_status,
                             'step_id': step.step_id,
                             'step_name': step.name,
@@ -242,11 +252,19 @@ def _get_worker_details(worker_id: str, api_key: str, base_url: str) -> pd.DataF
     if username is None:
         raise ValueError(f'Worker {worker_id} has no username')
 
+    contractor = ContractorDetails(
+        contractor_id=worker.get('contractor', {}).get('id', ''),
+        trading_name=worker.get('contractor', {}).get('tradingName', ''),
+        legal_business_name=worker.get('contractor', {}).get('legalBusinessName', '')
+    )
+
     worker = WorkerRaw(
         worker_id=worker['id'],
         user_name=username,
         first_name=worker['firstName'],
         last_name=worker['lastName'],
+        contractor_id=contractor.contractor_id,
+        contractor_name=contractor.trading_name,
         workflow_status=worker.get('tracking', {}).get('statusName', None),
         workflow_steps=worker.get('tracking', {}).get('workflowSteps', []),
         raw_json=worker
@@ -382,8 +400,10 @@ def _get_workers(entity: SitepassApiEntity, run_item: RunItem | None = None):
         raise Exception('API Call failed')
 
     data = pd.DataFrame(columns=[
-        'worker_id', 'user_name', 'first_name', 'last_name', 'workflow_status',
-        'step_id', 'step_name', 'step_status', 'section_id', 'section_name',
+        'worker_id', 'user_name', 'first_name', 'last_name',
+        'contractor_id', 'contractor_name',
+        'workflow_status', 'step_id', 'step_name', 'step_status',
+        'section_id', 'section_name',
         'field_id', 'field_name', 'field_type', 'field_value', 'field_resources',
         'model_section_id', 'section_status'
     ])
