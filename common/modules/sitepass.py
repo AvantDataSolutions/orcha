@@ -747,7 +747,7 @@ def _get_worker_workflow_step(
                         with open(f'{folder_path}/{res_id}{file_extension}', 'wb') as f:
                             f.write(file_response.content)
                     else:
-                        raise Exception(
+                        raise FileNotFoundError(
                             f'Failed to download resource file from: {res_url}' +
                             f' For field ID: {field_id}'
                         )
@@ -820,6 +820,8 @@ def _get_worker_workflow_step(
                         'field_value': field_info['value'],
                         'field_resources': field_info['resources']
                     })
+                except FileNotFoundError as fnf_error:
+                    raise fnf_error
                 except Exception as e:
                     print(f'Error processing field {field_group.get("id", "")}: {e}')
                     print(f'For worker {worker_id}, step {step_id}, subsection {subsection_id}')
