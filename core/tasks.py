@@ -1222,7 +1222,7 @@ class RunItem():
 
                 if len(updated_rows.all()) == 0:
                     raise VersionMismatchException('Run update using mismatched versions')
-                self.updated = update_dt
+                self.update_timestamp = update_dt
         except Exception as e:
             _tasks_log.add_entry(
                 actor='run_item', category='database',
