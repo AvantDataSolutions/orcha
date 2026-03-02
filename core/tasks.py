@@ -407,11 +407,12 @@ class TaskItem():
             cls, task_idk: str, name: str, description: str,
             schedule_sets: list[ScheduleSet],
             task_function: Callable[[TaskItem | None, RunItem | None, dict], None],
+            function_source_code: str | None = None,
             thread_group: str = 'base_thread',
             task_metadata: dict = {},
             task_tags: list[str] = [],
             register_with_runner: bool = True,
-            task_monitors: list[TaskMonitorBase] = []
+            task_monitors: list[TaskMonitorBase] = [],
         ):
         """
         Creates a new task with the given parameters. This will create a new
@@ -491,7 +492,7 @@ class TaskItem():
         )
 
         task.task_function = task_function # type: ignore
-        task.task_config = get_config_keys(task_function)
+        task.task_config = get_config_keys(task_function, function_source_code) # type: ignore
 
         for monitor in task_monitors:
             monitor.add_task(task)
@@ -1167,12 +1168,99 @@ class RunItem():
     def _update_db(self, ignore_updated_check: bool = False):
         try:
             with s_maker.begin() as session:
-                # TODO potential code for detecting concurrent updates
-                #       and avoiding overwriting changes
-                # update the run in the database if updated == updated
-                # to prevent overwriting changes from other processes
-                # and then update the updated time to the current time
                 update_dt = current_time()
+
+                # Fetch the current DB state within this transaction so we
+                # can detect and resolve any conflicts before writing.
+                db_record = session.query(RunRecord).filter(
+                    RunRecord.run_idk == self.run_idk
+                ).first()
+
+                # Start from our intended values and adjust as needed.
+                final_status = self.status
+                final_output = copy.deepcopy(self.output) if self.output is not None else None
+                # Use the DB record's timestamp as the reference for the
+                # optimistic-lock check so the WHERE clause stays correct.
+                last_updated = db_record.update_timestamp if db_record is not None else self.update_timestamp
+
+                if db_record is not None:
+                    db_status: str = db_record.status  # type: ignore
+                    db_output: dict | None = db_record.output  # type: ignore  (JSON column → dict)
+
+                    conflict_notes: list[str] = []
+
+                    # --- Status conflict resolution ---
+                    if db_status != self.status:
+                        # Trying to mark a run as succeeded that already failed →
+                        # keep it failed to preserve the failure signal.
+                        if (
+                            db_status == RunStatusEnum.failed.value
+                            and self.status == RunStatusEnum.success.value
+                        ):
+                            final_status = RunStatusEnum.failed.value
+                            conflict_notes.append(
+                                f'Status conflict: attempted to set status to '
+                                f'"{self.status}" but run was already '
+                                f'"{db_status}". Keeping status as "{final_status}".'
+                            )
+
+                        # Trying to mark a run as failed that already succeeded →
+                        # downgrade to warn so neither result is silently dropped.
+                        elif (
+                            db_status == RunStatusEnum.success.value
+                            and self.status == RunStatusEnum.failed.value
+                        ):
+                            final_status = RunStatusEnum.warn.value
+                            conflict_notes.append(
+                                f'Status conflict: attempted to set status to '
+                                f'"{self.status}" but run was already '
+                                f'"{db_status}". Setting status to "{final_status}".'
+                            )
+
+                    # --- Output conflict resolution ---
+                    db_out = db_output or {}
+                    in_out = self.output or {}
+                    # Only consider it a conflict if the same key exists in both
+                    # and has differing values (ignore 'update_conflict').
+                    conflicting_keys = [
+                        k for k in db_out
+                        if k in in_out and db_out[k] != in_out[k] and k != 'update_conflict'
+                    ]
+                    # Merge DB values as the base, incoming values on top.
+                    merged: dict = {}
+                    if db_out:
+                        merged.update(db_out)
+                    if in_out:
+                        merged.update(in_out)
+                    if conflicting_keys:
+                        conflict_notes.append(
+                            f'Output conflict: output dicts differed. '
+                            f'DB keys: {sorted(db_out.keys())}. '
+                            f'Incoming keys: {sorted(in_out.keys())}. '
+                            f'Keys with differing values: {conflicting_keys}. '
+                            f'Outputs have been merged (incoming values take precedence).'
+                        )
+                    # If there are no conflicting keys (only added/removed keys),
+                    # don't treat it as a conflict — just use the merged output.
+                    final_output = merged if merged else None
+
+                    # Attach any conflict notes to the output under "update_conflict".
+                    if conflict_notes:
+                        if final_output is None:
+                            final_output = {}
+                        existing = final_output.get('update_conflict', [])
+                        if isinstance(existing, str):
+                            existing = [existing]
+                        elif not isinstance(existing, list):
+                            existing = [str(existing)]
+                        existing.extend(conflict_notes)
+                        final_output['update_conflict'] = existing
+
+                # Apply resolved values back onto self before the write so
+                # the in-memory object stays consistent with what lands in the DB.
+                self.status = final_status
+                self.output = final_output
+
                 updated_rows = session.execute(sql('''
                     INSERT INTO orcha.runs (
                         run_idk, update_timestamp, task_idf, set_idf, run_type,
@@ -1202,7 +1290,7 @@ class RunItem():
                     RETURNING *
                 '''), {
                     'update_timestamp': update_dt,
-                    'last_updated': self.update_timestamp,
+                    'last_updated': last_updated,
                     'run_idk': self.run_idk,
                     'task_idf': self._task.task_idk,
                     'set_idf': self.set_idf,

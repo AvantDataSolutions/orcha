@@ -97,16 +97,19 @@ class http_utils():
         return ip
 
 
-def get_config_keys(fnc: Callable) -> dict:
+def get_config_keys(fnc: Callable, source: str) -> dict:
     """
     Inspects a function and returns a dictionary of all config keys used in the function.
     #### Parameters
     - fnc: The function to inspect
+    - source: The source code of the function as a string.
+        This is required to handle cases where the function is
+        defined from a Orcha UI defined function.
     #### Returns
     - dict: A dictionary of all config keys used in the function,
     with the key as the dictionary key and the default value as the dictionary value
     """
-    source = inspect.getsource(fnc)
+    source = source or inspect.getsource(fnc)
     tree = ast.parse(source)
 
     class ConfigKeyVisitor(ast.NodeVisitor):

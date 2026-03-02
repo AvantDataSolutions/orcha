@@ -5,6 +5,8 @@ import time
 import traceback
 
 from orcha.core import tasks
+from orcha.core import pickle_store
+from orcha.core.agent import ModuleRegistry
 from orcha.core.tasks import RunItem, ScheduleSet, TaskItem
 from orcha.utils import kvdb
 from orcha.utils import threading as orcha_threading
@@ -15,6 +17,7 @@ from orcha.utils.log import LogManager
 # https://docs.docker.com/engine/reference/commandline/stop/
 
 BASE_THREAD_GROUP = 'base_thread'
+PICKLE_THREAD_GROUP = 'pickle_tasks'
 
 runner_log = LogManager('task_runner')
 
@@ -347,12 +350,18 @@ class TaskRunner():
     """
     Default task timeout in seconds, unless specified in the schedule config
     """
+    secrets: dict[str, str] = {}
+    """
+    A dictionary of secret name -> secret value pairs available to task functions.
+    Secret names can be shared with the UI via the agent, values stay in the runner.
+    """
 
     def __init__(
             self,
             run_in_thread = True,
             use_thread_groups = True,
-            default_runner = True
+            default_runner = True,
+            secrets: dict[str, str] | None = None
         ):
         runner_log.add_entry(
             actor='task_runner', category='setup', text='Setting up task runner',
@@ -360,6 +369,8 @@ class TaskRunner():
         )
         self.run_in_threads = run_in_thread
         self.use_thread_groups = use_thread_groups
+        if secrets:
+            TaskRunner.secrets = secrets
         # If we have a dummy runner, then only register it as the default
         # if it's not already set. This is to allow for the dummy runner to
         # be set as the default runner in the tests or similar cases
@@ -444,3 +455,115 @@ class TaskRunner():
         if not alive:
             return not_alive
         return alive
+
+    def load_pickle_tasks(self, secrets: dict[str, str] | None = None, environment_id: str | None = None):
+        """
+        Load task definitions from the pickle store, compile their source
+        code into functions, and register them with the task runner.
+
+        This is the single code path for both:
+        - Startup: picking up previously-deployed tasks on container restart.
+        - Deploy: the agent calls this after storing a new task definition.
+
+        No Python objects are unpickled — only source code + JSON metadata
+        are stored, and the function is recompiled via exec() each time.
+
+        Args:
+            secrets: Optional dict of secret name→value pairs to inject
+                     into the exec() namespace. Falls back to TaskRunner.secrets.
+            environment_id: Optional environment ID to filter which tasks to load.
+                           If None, loads all tasks.
+        """
+        if not pickle_store.is_initialised:
+            runner_log.add_entry(
+                actor='task_runner', category='pickle_tasks',
+                text='Pickle store not initialised, skipping pickle task loading',
+                json={}
+            )
+            return
+
+        exec_secrets = secrets or TaskRunner.secrets
+
+        try:
+            task_defs = pickle_store.load_task_definitions(environment_id=environment_id)
+            runner_log.add_entry(
+                actor='task_runner', category='pickle_tasks',
+                text=f'Found {len(task_defs)} task definitions',
+                json={'count': len(task_defs), 'environment_id': environment_id}
+            )
+            for task_def in task_defs:
+                try:
+                    source_code = task_def.get('source_code', None)
+                    if not isinstance(source_code, str | None):
+                        raise Exception('Invalid source_code in task definition, expected string or None')
+                    if not source_code:
+                        runner_log.add_entry(
+                            actor='task_runner', category='pickle_tasks',
+                            text=f'Task definition {task_def.get("name")} has no source_code',
+                            json={'pickle_idk': task_def.get('pickle_idk')}
+                        )
+                        continue
+
+                    # Compile the source code to get the task function
+                    local_ns: dict = {}
+                    exec(source_code, {
+                        '__builtins__': __builtins__,
+                        'secrets': exec_secrets,
+                        'registry': ModuleRegistry,
+                    }, local_ns)
+
+                    task_func = local_ns.get('task_function')
+                    if task_func is None:
+                        runner_log.add_entry(
+                            actor='task_runner', category='pickle_tasks',
+                            text=f'Task {task_def.get("name")} source_code does not define task_function',
+                            json={'pickle_idk': task_def.get('pickle_idk')}
+                        )
+                        continue
+
+                    schedule_sets = [
+                        ScheduleSet(
+                            cron_schedule=s['cron_schedule'],
+                            config=s.get('config', {})
+                        )
+                        for s in task_def.get('schedule_sets', [])
+                    ]
+
+                    task_idk = task_def.get('task_idk', task_def.get('pickle_idk', 'unknown'))
+                    task = TaskItem.create(
+                        task_idk=task_idk,
+                        name=task_def.get('name', task_idk),
+                        description=task_def.get('description', ''),
+                        schedule_sets=schedule_sets,
+                        task_function=task_func,
+                        function_source_code=source_code,
+                        thread_group=task_def.get('thread_group', PICKLE_THREAD_GROUP),
+                        task_metadata={
+                            'pickle_task': True,
+                            'pickle_idk': task_def.get('pickle_idk'),
+                            **(task_def.get('task_metadata', {}))
+                        },
+                        task_tags=task_def.get('task_tags', ['pickle']),
+                        register_with_runner=True,
+                    )
+                    runner_log.add_entry(
+                        actor='task_runner', category='pickle_tasks',
+                        text=f'Loaded task from source: {task_def.get("name")}',
+                        json={'pickle_idk': task_def.get('pickle_idk'), 'task_idk': task.task_idk}
+                    )
+                except Exception as e:
+                    runner_log.add_entry(
+                        actor='task_runner', category='pickle_task_error',
+                        text=f'Failed to compile task {task_def.get("name")}: {str(e)}',
+                        json={
+                            'pickle_idk': task_def.get('pickle_idk'),
+                            'error': str(e),
+                            'traceback': traceback.format_exc()
+                        }
+                    )
+        except Exception as e:
+            runner_log.add_entry(
+                actor='task_runner', category='pickle_tasks_error',
+                text=f'Failed to load pickle tasks: {str(e)}',
+                json={'error': str(e)}
+            )

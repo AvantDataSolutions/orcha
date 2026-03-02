@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from orcha.core import monitors, scheduler, tasks
+import os
+
+from orcha.core import monitors, scheduler, tasks, pickle_store
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Broker, Consumer, Producer
 from orcha.utils import kvdb
@@ -17,6 +19,7 @@ def initialise(
         kvdb_postgres_server: str | None = None,
         kvdb_postgres_db: str | None = None,
         kvdb_postgres_schema: str | None = None,
+        pickle_master_key: str | None = None,
     ):
     """
     This function must be called before any other functions in the orcha package.
@@ -168,4 +171,25 @@ def initialise(
         raise e
 
     lm.add_entry('orcha_core', 'startup', 'Orcha initialisation complete', {})
+
+    _pickle_key = pickle_master_key or os.environ.get('ORCHA_PICKLE_KEY')
+    if _pickle_key:
+        lm.add_entry('orcha_core', 'startup', 'Setting up pickle store', {})
+        try:
+            pickle_store.initialise(
+                orcha_user=orcha_user,
+                orcha_pass=orcha_pass,
+                orcha_server=orcha_server,
+                orcha_db=orcha_db,
+                orcha_schema=_ORCHA_SCHEMA,
+                master_key=_pickle_key
+            )
+        except Exception as e:
+            lm.add_entry('orcha_core', 'error', 'Error setting up pickle store', {
+                'exception_type': type(e).__name__,
+                'exception': str(e)
+            })
+    else:
+        lm.add_entry('orcha_core', 'startup', 'No ORCHA_PICKLE_KEY set, pickle store disabled', {})
+
     return LogManager('orcha_custom')
