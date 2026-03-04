@@ -1257,8 +1257,9 @@ class RunItem():
                 # Use the DB record's timestamp as the reference for the
                 # optimistic-lock check so the WHERE clause stays correct.
                 last_updated = db_record.update_timestamp if db_record is not None else self.update_timestamp
-
-                if db_record is not None:
+                db_last_updated = db_record.update_timestamp if db_record is not None else None
+                last_update_conflict = db_last_updated != self.update_timestamp
+                if db_record is not None and last_update_conflict: # type: ignore
                     db_status: str = db_record.status  # type: ignore
                     db_output: dict | None = db_record.output  # type: ignore  (JSON column → dict)
 
@@ -1299,7 +1300,9 @@ class RunItem():
                     # and has differing values (ignore 'update_conflict').
                     conflicting_keys = [
                         k for k in db_out
-                        if k in in_out and db_out[k] != in_out[k] and k != 'update_conflict'
+                        if k in in_out
+                        and db_out[k] != in_out[k]
+                        and k != 'update_conflict'
                     ]
                     # Merge DB values as the base, incoming values on top.
                     merged: dict = {}
@@ -1310,8 +1313,6 @@ class RunItem():
                     if conflicting_keys:
                         conflict_notes.append(
                             f'Output conflict: output dicts differed. '
-                            f'DB keys: {sorted(db_out.keys())}. '
-                            f'Incoming keys: {sorted(in_out.keys())}. '
                             f'Keys with differing values: {conflicting_keys}. '
                             f'Outputs have been merged (incoming values take precedence).'
                         )
