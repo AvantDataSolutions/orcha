@@ -869,6 +869,7 @@ class RunItem():
         - status: The status of the run (success, warn, failed, cancelled)
         - progress: The progress of the run (queued, running, complete)
         - output: The output of the run which includes all outputs from modules and the task function
+        - _is_dummy: If True, all database operations will be skipped (for testing)
     """
     _task: TaskItem
     update_timestamp: dt
@@ -886,6 +887,7 @@ class RunItem():
     status: RunStatus
     progress: RunProgress
     output: dict | None = None
+    _is_dummy: bool = False
 
     @staticmethod
     def _task_id_populate(task: str | TaskItem) -> TaskItem:
@@ -990,10 +992,73 @@ class RunItem():
             config = run_config,
             status = 'unstarted',
             progress = 'queued',
-            output = None
+            output = None,
+            _is_dummy = False
         )
 
         item._update_db(ignore_updated_check=True)
+        return item
+
+    @staticmethod
+    def create_dummy(
+            task: TaskItem | None = None, run_type: RunType = 'manual',
+            schedule: ScheduleSet | None = None, scheduled_time: dt = current_time(),
+            created_by: str = '', config_override: dict = {}
+        ) -> RunItem:
+        """
+        Creates a dummy run instance for a task with a new uuid but does NOT
+        write to the database. This is useful for testing without affecting
+        the database. All database operations will be skipped for dummy runs.
+        The parameters are identical to the create() method.
+        """
+
+        sset_id = None
+        run_config = {}
+
+        # Scheduled runs need to handle the schedule set whereas
+        # manual and triggered runs have no schedule set and use the
+        # config_override only
+        if run_type == 'scheduled' or run_type == 'retry':
+            if schedule is None:
+                raise Exception('Scheduled run requires a schedule set')
+            sset_id = schedule.set_idk
+            # use the override config if provided
+            run_config = config_override or schedule.config
+        elif run_type == 'manual' or run_type == 'triggered':
+            # if we have a schedule for these runs then use the config or override
+            if schedule is not None:
+                sset_id = schedule.set_idk
+                run_config = config_override or schedule.config
+            elif config_override is not None:
+                run_config = config_override
+            else:
+                raise Exception(
+                    'Manual/triggered run requires a config override or schedule set'
+                )
+        else:
+            raise Exception('Invalid run type')
+
+
+        item = RunItem(
+            _task = task,
+            update_timestamp = current_time(),
+            run_idk = str(uuid4()),
+            task_idf = '',
+            set_idf = sset_id,
+            run_type = run_type,
+            created_time = current_time(),
+            created_by = created_by,
+            scheduled_time = scheduled_time,
+            start_time = None,
+            end_time = None,
+            last_active = None,
+            config = run_config,
+            status = 'unstarted',
+            progress = 'queued',
+            output = None,
+            _is_dummy = True
+        )
+
         return item
 
     @staticmethod
@@ -1148,7 +1213,10 @@ class RunItem():
     def reload(self):
         """
         Used to reload the run from the database to get the latest data.
+        Dummy runs will skip this operation.
         """
+        if self._is_dummy:
+            return
         db_data = RunItem.get(self.run_idk, task=self._task)
         if db_data is None:
             raise Exception('Run not found in database')
@@ -1158,7 +1226,10 @@ class RunItem():
         """
         Deletes the run from the database.
         #### Note: Does not delete the instance, just the database entry.
+        Dummy runs will skip this operation.
         """
+        if self._is_dummy:
+            return
         with s_maker.begin() as session:
             session.execute(sql('''
                 DELETE FROM orcha.runs
@@ -1166,6 +1237,10 @@ class RunItem():
             '''), {'run_idk': self.run_idk})
 
     def _update_db(self, ignore_updated_check: bool = False):
+        if self._is_dummy:
+            # Dummy runs skip database operations
+            self.update_timestamp = current_time()
+            return
         try:
             with s_maker.begin() as session:
                 update_dt = current_time()
@@ -1334,12 +1409,15 @@ class RunItem():
     def update_active(self):
         """
         Updates the last active time for the run to the current time.
+        Dummy runs will skip this operation.
         """
         # We're directly updating the database here as all that is being
         # updated is the last_active time which is purely a change to this
         # one column and nothing else; don't need to reload the run as
         # we don't care if we 'roll back' a last_active time every now and then
         self.last_active = current_time()
+        if self._is_dummy:
+            return
         with s_maker.begin() as session:
             session.execute(sql('''
                 UPDATE orcha.runs
