@@ -1448,10 +1448,15 @@ class RunItem():
         try_count = 0
         max_tries = 3
         while try_count < 3:
+            changing_status = False
+            changing_progress = False
+            changing_start_time = False
+            changing_end_time = False
+            changing_output = False
+            change_log = ''
             try:
                 # Updating 'self' inside the loop as if we fail, the reload()
                 # will reset 'self' to the database values each time
-                change_log = ''
                 needs_update = False
                 if changing_status := self.status != status:
                     needs_update = True
