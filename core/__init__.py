@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from orcha.core import monitors, scheduler, tasks
+from orcha import migrations
+from orcha.core import database, monitors, scheduler, tasks
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Broker, Consumer, Producer
 from orcha.utils import kvdb
@@ -17,24 +18,43 @@ def initialise(
         kvdb_postgres_server: str | None = None,
         kvdb_postgres_db: str | None = None,
         kvdb_postgres_schema: str | None = None,
+        run_migrations: bool = True,
     ):
     """
     This function must be called before any other functions in the orcha package.
     This function does the following:
-    - Sets up the sqlalchemy database connection
-    - Sets up the logging database
+    - Applies the core database migrations (unless `run_migrations` is False)
+    - Configures the shared sqlalchemy connection used by tasks, scheduler and logging
+    - Sets up the kvdb store
     - (Optional) Sets up the monitor config if using monitors and alerts
     #### Returns
     - LogManager: The orcha log manager to be used for custom logging
     """
 
-    # Initialise the log manager first for use later on
-    LogManager._setup_sqlalchemy(
+    # Apply the core migrations first so every table/schema the rest of
+    # initialisation (and the running code) relies on already exists. The
+    # migrations ship with orcha core, so they stay in sync with the table
+    # definitions in the code. This is a no-op when the database is already at
+    # head. Set run_migrations=False to manage migrations out-of-band instead.
+    if run_migrations:
+        migrations.upgrade_to_head(
+            user=orcha_user,
+            passwd=orcha_pass,
+            server=orcha_server,
+            db=orcha_db,
+            application_name=f'{application_name}_migrations',
+        )
+
+    # Configure the shared engine + session_maker once. The ORM record classes
+    # in tasks/scheduler/log are already mapped (at import time) onto the tables
+    # in orcha.core.tables, so binding the shared connection here is all that is
+    # needed to make them usable; logging works as soon as this returns.
+    database.configure(
         user=orcha_user,
         passwd=orcha_pass,
         server=orcha_server,
         db=orcha_db,
-        application_name=f'{application_name}_logs'
+        application_name=application_name,
     )
 
     lm = LogManager('orcha')
@@ -129,43 +149,6 @@ def initialise(
                 json={}
             )
             raise Exception('mqueue must be configured if using monitors and alerts')
-
-    lm.add_entry('orcha_core', 'startup', 'Setting up tasks sqlalchemy', {})
-    try:
-        tasks._setup_sqlalchemy(
-            orcha_user=orcha_user,
-            orcha_pass=orcha_pass,
-            orcha_server=orcha_server,
-            orcha_db=orcha_db,
-            orcha_schema=_ORCHA_SCHEMA,
-            application_name=f'{application_name}_tasks'
-        )
-    except Exception as e:
-        lm.add_entry('orcha_core', 'error', 'Error setting up tasks sqlalchemy', {
-            'exception_type': type(e).__name__,
-            'exception': str(e)
-        })
-        # still raise the exception as we want to fail-fast and not run properly
-        # if something is wrong
-        raise e
-
-    lm.add_entry('orcha_core', 'startup', 'Setting up scheduler sqlalchemy', {})
-    try:
-        scheduler._setup_sqlalchemy(
-            orcha_user=orcha_user,
-            orcha_pass=orcha_pass,
-            orcha_server=orcha_server,
-            orcha_db=orcha_db,
-            orcha_schema=_ORCHA_SCHEMA,
-            application_name=f'{application_name}_scheduler'
-        )
-    except Exception as e:
-        lm.add_entry('orcha_core', 'error', 'Error setting up scheduler sqlalchemy', {
-            'exception_type': type(e).__name__,
-            'exception': str(e)
-        })
-        # same as above logic
-        raise e
 
     lm.add_entry('orcha_core', 'startup', 'Orcha initialisation complete', {})
     return LogManager('orcha_custom')

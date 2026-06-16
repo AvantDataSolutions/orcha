@@ -558,7 +558,7 @@ def get(
 
 
 def get_latest_versions(
-        s_maker: sessionmaker[Session],
+        session_maker: sessionmaker[Session],
         table: str,
         key_columns: list, version_column: str,
         select_columns: list | Literal['*'], match_pairs: list[tuple[str, str, str]] = [],
@@ -569,7 +569,7 @@ def get_latest_versions(
     This is used when a table contains multiple versions of the same key.
 
     Args:
-        session: The SQLAlchemy session to use for the database connection.
+        session_maker: The SQLAlchemy session maker to use for the database connection.
         table: The name of the database table to query; 'schema.table' format.
         key_columns: A list of column names that make up the primary key of the table.
         version_column: The name of the column that contains the version number.
@@ -608,7 +608,7 @@ def get_latest_versions(
         {f'WHERE {pairs_query}' if pairs_query else ''}
         ORDER BY {', '.join(key_columns)}, {version_column} DESC
     '''
-    with s_maker.begin() as tx:
+    with session_maker.begin() as tx:
         # only keep the first and last values of each key
         mp_sql_params = {f'{i}_{k}': v for i, k, c, v in mp_indexed}
         # print(sql(q_str).bindparams(**mp_sql_params).compile(

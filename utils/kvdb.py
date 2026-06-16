@@ -13,12 +13,12 @@ from typing import Any, Literal, Type, TypeVar, Union
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
-from sqlalchemy import DateTime, LargeBinary, String
-from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
-from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
+from orcha.utils.sqlalchemy import postgres_partial_scaffold
 
-from orcha.core import module_base
+from orcha.core import module_base, tables
+from orcha.core.database import Base
 
 print('Loading:',__name__)
 
@@ -32,6 +32,15 @@ is_initialised = False
 _sessionmaker: sessionmaker[Session] | None = None
 
 _kvdb_folder = os.path.join(tempfile.gettempdir(), 'orcha_kvdb')
+
+
+# ORM record class mapped onto the single-source-of-truth table in
+# orcha.core.tables. kvdb keeps its own session factory (it accepts its own
+# connection parameters and may point at a different database), but shares the
+# ORM mapping. The orcha schema and kvdb_items table are created and owned by the
+# Alembic migrations in orcha.migrations (run `alembic upgrade head`).
+class KvdbItemModel(Base):
+    __table__ = tables.kvdb_items
 
 
 @dataclass
@@ -108,29 +117,17 @@ def initialise(
     Initialise the kvdb module with a Postgres connection.
     """
 
-    global is_initialised, _sessionmaker, KvdbItemModel
+    global is_initialised, _sessionmaker
     if is_initialised:
         return
 
-    _Base, _engine, _sessionmaker = postgres_scaffold(
+    _engine, _sessionmaker = postgres_partial_scaffold(
         user=postgres_user,
         passwd=postgres_pass,
         server=postgres_server,
         db=postgres_db,
-        schema=postgres_schema,
         application_name='orcha_kvdb'
     )
-
-    class KvdbItemModel(_Base):
-        __tablename__ = 'kvdb_items'
-
-        key: Mapped[str] = mapped_column(String, primary_key=True)
-        value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-        type: Mapped[str] = mapped_column(String, nullable=False)
-        expiry: Mapped[dt] = mapped_column(DateTime)
-        salt: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
-
-    sqlalchemy_build(base=_Base, engine=_engine, schema_name=postgres_schema)
 
     is_initialised = True
 
@@ -361,7 +358,7 @@ def list_items(
     """Return snapshots of kvdb entries for inspection tools."""
     if storage_type != 'postgres':
         raise NotImplementedError('Only postgres kvdb listing is supported')
-    if not is_initialised or _sessionmaker is None or KvdbItemModel is None:
+    if not is_initialised or _sessionmaker is None:
         raise Exception('KVDB module not initialised for Postgres storage.')
 
     limit = max(1, min(limit or 200, 500))
@@ -419,7 +416,7 @@ def delete(
     ) -> bool:
     """Delete a value from the kvdb store."""
     if storage_type == 'postgres':
-        if not is_initialised or _sessionmaker is None or KvdbItemModel is None:
+        if not is_initialised or _sessionmaker is None:
             raise Exception('KVDB module not initialised for Postgres storage.')
         with _sessionmaker.begin() as tx:
             deleted = tx.query(KvdbItemModel).filter(KvdbItemModel.key == key).delete()

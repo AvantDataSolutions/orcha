@@ -3,10 +3,16 @@ from __future__ import annotations
 from datetime import datetime as dt, timedelta as td
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, String
-from sqlalchemy.dialects.postgresql import JSON as SQL_JSON
-from sqlalchemy.dialects.postgresql import UUID as SQL_UUID
-from orcha.utils.sqlalchemy import sqlalchemy_build, postgres_scaffold
+from orcha.core import tables
+from orcha.core.database import Base, session_maker
+
+
+# ORM record class mapped onto the single-source-of-truth table in
+# orcha.core.tables; the shared engine/session_maker live in orcha.core.database.
+# The orcha_logs schema and the logs table are created and owned by the Alembic
+# migrations in orcha.migrations (run `alembic upgrade head`); not built here.
+class LogEntryRecord(Base):
+    __table__ = tables.logs
 
 
 class LogManager:
@@ -15,47 +21,6 @@ class LogManager:
     This is designed for very simple logging.
     Also provides helpers for querying logs.
     """
-    @staticmethod
-    def _setup_sqlalchemy(
-            user: str, passwd: str,
-            server: str, db: str,
-            application_name: str
-        ):
-        """
-        Setup the SQLAlchemy ORM for the log manager. This function should be
-        called before any LogManager instances are created. The schema is
-        automatically set to 'orcha_logs'.
-        ### Parameters:
-        - `user`: The database username.
-        - `passwd`: The database password.
-        - `server`: The database server.
-        - `db`: The database name.
-        ### Returns:
-        Nothing
-        """
-        CUR_SCHEMA = 'orcha_logs'
-        global Base, engine, Session, LogEntryRecord
-        Base, engine, Session = postgres_scaffold(
-            user=user,
-            passwd=passwd,
-            server=server,
-            db=db,
-            schema=CUR_SCHEMA,
-            application_name=application_name
-        )
-
-        class LogEntryRecord(Base):
-            __tablename__ = 'logs'
-            created = Column(DateTime, index=True)
-            id = Column(SQL_UUID(as_uuid=True), primary_key=True)
-            actor = Column(String)
-            source = Column(String, index=True)
-            category = Column(String)
-            text = Column(String)
-            json = Column(SQL_JSON)
-
-        sqlalchemy_build(Base, engine, CUR_SCHEMA)
-
 
     def __init__(self, source_name: str):
         """
@@ -83,7 +48,7 @@ class LogManager:
         ### Returns:
         Nothing
         """
-        with Session.begin() as db:
+        with session_maker.begin() as db:
             # Using add for performance, we never update/merge
             # old log entries
             db.add(LogEntryRecord(
@@ -106,7 +71,7 @@ class LogManager:
         """
         if max_age is None:
             return 0
-        with Session.begin() as db:
+        with session_maker.begin() as db:
             return db.query(LogEntryRecord).filter(
                 LogEntryRecord.created < dt.utcnow() - max_age
             ).delete()
@@ -128,7 +93,7 @@ class LogManager:
         ### Returns:
         A list of log entries.
         """
-        with Session.begin() as db:
+        with session_maker.begin() as db:
             query = db.query(LogEntryRecord)
             if start is not None:
                 query = query.filter(LogEntryRecord.created >= start)
@@ -148,7 +113,7 @@ class LogManager:
     @staticmethod
     def get_distinct_sources() -> list[str]:
         """Return a sorted list of distinct log sources."""
-        with Session.begin() as db:
+        with session_maker.begin() as db:
             rows = db.query(LogEntryRecord.source).distinct().all()
             sources: list[str] = [r[0] for r in rows if r and r[0]]
         return sorted(sources)

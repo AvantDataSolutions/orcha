@@ -10,12 +10,26 @@ import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Column, DateTime, String
 from sqlalchemy.sql import text as sql
 
 from orcha import current_time
-from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
+from orcha.core import tables
+from orcha.core.database import Base
+from orcha.utils.sqlalchemy import postgres_scaffold
 from orcha.utils.threading import run_function_with_timeout
+
+
+# ORM record classes for the message queue, mapped onto the single-source-of-truth
+# tables in orcha.core.tables. The broker binds these to its own engine/session
+# (it is a separate service), so they share the mapping but not the connection.
+# The message_queue schema and tables are created and owned by the Alembic
+# migrations in orcha.migrations (run `alembic upgrade head`); not built here.
+class MessageRecord(Base):
+    __table__ = tables.messages
+
+
+class ConsumerRecord(Base):
+    __table__ = tables.consumers
 
 
 class Status:
@@ -483,6 +497,10 @@ class Broker():
 
         Broker.schema = mqueue_pg_schema
 
+        # The broker keeps its own engine/session_maker (it can run as a separate
+        # service). The MessageRecord/ConsumerRecord ORM classes are defined once
+        # at module level; Broker.Base is retained only as the "already set up"
+        # sentinel checked above.
         Broker.Base, Broker.engine, Broker.session_maker = postgres_scaffold(
             application_name='mqueue',
             db=mqueue_pg_name,
@@ -491,29 +509,6 @@ class Broker():
             user=mqueue_pg_user,
             passwd=mqueue_pg_pass,
         )
-
-        global MessageRecord, ConsumerRecord
-
-        class MessageRecord(Broker.Base):
-            __tablename__ = 'messages'
-            id = Column(String, primary_key=True)
-            created_at = Column(DateTime)
-            sent_at = Column(DateTime)
-            acked_at = Column(DateTime)
-            channel = Column(String)
-            consumer_name = Column(String)
-            message = Column(String)
-            acked = Column(String)
-            send_status = Column(String)
-
-
-        class ConsumerRecord(Broker.Base):
-            __tablename__ = 'consumers'
-            channel = Column(String, primary_key=True)
-            name = Column(String, primary_key=True)
-            url = Column(String)
-
-        sqlalchemy_build(Broker.Base, Broker.engine, Broker.schema)
 
         # populate the in-memory consumers dict
         Broker.consumer_cache = ConsumerCache()

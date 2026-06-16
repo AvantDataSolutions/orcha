@@ -8,50 +8,23 @@ from datetime import datetime as dt
 from datetime import timedelta as td
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, String
-from sqlalchemy.engine import Engine
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.orm import Session, sessionmaker
-
 from orcha import current_time
-from orcha.core import monitors
+from orcha.core import monitors, tables
+from orcha.core.database import Base, session_maker
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.core.tasks import TaskItem
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
-from orcha.utils.sqlalchemy import postgres_scaffold, sqlalchemy_build
 
 scheduler_log = LogManager('scheduler')
 
-Base: DeclarativeMeta
-engine: Engine
-s_maker: sessionmaker[Session]
 
-
-def _setup_sqlalchemy(
-        orcha_user: str, orcha_pass: str,
-        orcha_server: str, orcha_db: str,
-        orcha_schema: str, application_name: str
-    ):
-    global is_initialised, Base, engine, s_maker, SchedulerRecord
-    is_initialised = True
-    Base, engine, s_maker = postgres_scaffold(
-        user=orcha_user,
-        passwd=orcha_pass,
-        server=orcha_server,
-        db=orcha_db,
-        schema=orcha_schema,
-        application_name=application_name
-    )
-
-    class SchedulerRecord(Base):
-        __tablename__ = 'schedulers'
-
-        scheduler_idk = Column(String, primary_key=True)
-        last_active = Column(DateTime(timezone=False))
-        loaded_at = Column(DateTime(timezone=False))
-
-    sqlalchemy_build(Base, engine, orcha_schema)
+# ORM record class mapped onto the single-source-of-truth table in
+# orcha.core.tables; the shared engine/session_maker live in orcha.core.database.
+# The orcha schema and the schedulers table are created and owned by the Alembic
+# migrations in orcha.migrations (run `alembic upgrade head`); not built here.
+class SchedulerRecord(Base):
+    __table__ = tables.schedulers
 
 
 class RunningState(Enum):
@@ -423,7 +396,7 @@ class Scheduler:
         """
         Set the loaded_at time for the scheduler in the database.
         """
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             # Using a single scheduler for now
             session.merge(
                 SchedulerRecord(scheduler_idk='main', loaded_at=current_time())
@@ -434,7 +407,7 @@ class Scheduler:
         """
         Get the loaded_at time for the scheduler from the database.
         """
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             record = session.query(SchedulerRecord
                 ).filter_by(scheduler_idk=scheduler_idk
                 ).first()
@@ -449,7 +422,7 @@ class Scheduler:
         """
         Get the last_active time for the scheduler from the database.
         """
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             record = session.query(SchedulerRecord
                 ).filter_by(scheduler_idk=scheduler_idk
                 ).first()
@@ -488,7 +461,7 @@ class Scheduler:
         """
         Update the last_active time for the scheduler in the database.
         """
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             # Using a single scheduler for now
             session.merge(
                 SchedulerRecord(scheduler_idk='main', last_active=current_time())

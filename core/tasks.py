@@ -11,24 +11,17 @@ from typing import Callable, Literal
 from uuid import uuid4
 
 from croniter import croniter
-from sqlalchemy import Column, DateTime, String
-from sqlalchemy.dialects.postgresql import insert, JSON as PG_JSON
-from sqlalchemy.engine import Engine
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import text as sql
 
 from orcha import current_time
-from orcha.core import monitors
+from orcha.core import monitors, tables
+from orcha.core.database import Base, is_configured, session_maker
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.utils import get_config_keys
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
-from orcha.utils.sqlalchemy import (
-    get_latest_versions,
-    postgres_scaffold,
-    sqlalchemy_build,
-)
+from orcha.utils.sqlalchemy import get_latest_versions
 
 print('Loading:',__name__)
 
@@ -64,18 +57,27 @@ class MqueueChannels():
     )
 
 
-is_initialised = False
 skip_initialisation_check = False
 """
 Debug flag to skip the initialisation check for adding tasks
 without a task runner in place.
 """
 
-Base: DeclarativeMeta
-engine: Engine
-s_maker: sessionmaker[Session]
-
 _register_task_with_runner: Callable | None = None
+
+
+# ORM record classes. The table schemas are defined once in orcha.core.tables
+# (the single source of truth) and mapped here via __table__; the shared engine
+# and session_maker live in orcha.core.database. The orcha schema, the
+# tasks/runs tables and their indexes are created and owned by the migrations in
+# orcha.migrations (run `alembic upgrade head`); they are not built here.
+class TaskRecord(Base):
+    __table__ = tables.tasks
+
+
+class RunRecord(Base):
+    __table__ = tables.runs
+
 
 """
 ===================================================================
@@ -89,77 +91,8 @@ def confirm_initialised():
     """
     if skip_initialisation_check:
         return
-    if not is_initialised:
+    if not is_configured():
         raise RuntimeError('orcha not initialised. Call orcha.core.initialise() first')
-
-def _setup_sqlalchemy(
-        orcha_user: str, orcha_pass: str,
-        orcha_server: str, orcha_db: str,
-        orcha_schema: str, application_name: str
-    ):
-    global is_initialised, Base, engine, s_maker, TaskRecord, RunRecord
-    is_initialised = True
-    Base, engine, s_maker = postgres_scaffold(
-        user=orcha_user,
-        passwd=orcha_pass,
-        server=orcha_server,
-        db=orcha_db,
-        schema=orcha_schema,
-        application_name=application_name
-    )
-    class TaskRecord(Base):
-        __tablename__ = 'tasks'
-
-        task_idk = Column(String, primary_key=True)
-        version = Column(DateTime(timezone=False), primary_key=True)
-        task_metadata = Column(PG_JSON)
-        task_tags = Column(PG_JSON)
-        name = Column(String)
-        description = Column(String)
-        schedule_sets = Column(PG_JSON)
-        thread_group = Column(String)
-        last_active = Column(DateTime(timezone=False))
-        status = Column(String)
-        notes = Column(String)
-        task_config = Column(PG_JSON)
-
-    class RunRecord(Base):
-        __tablename__ = 'runs'
-
-        update_timestamp = Column(DateTime(timezone=False))
-        run_idk = Column(String, primary_key=True)
-        task_idf = Column(String)
-        set_idf = Column(String)
-        run_type = Column(String)
-        created_time = Column(DateTime(timezone=False))
-        created_by = Column(String)
-        scheduled_time = Column(DateTime(timezone=False))
-        start_time = Column(DateTime(timezone=False))
-        end_time = Column(DateTime(timezone=False))
-        last_active = Column(DateTime(timezone=False))
-        config = Column(PG_JSON)
-        progress = Column(String)
-        status = Column(String)
-        output = Column(PG_JSON)
-
-
-    sqlalchemy_build(Base, engine, orcha_schema)
-
-    # Critical index for the performace of fetching runs
-    with s_maker.begin() as tx:
-        tx.execute(sql('''
-            --DROP INDEX IF EXISTS orcha.idx_orcha_runs_task_scheduled;
-            CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_scheduled
-            ON orcha.runs (task_idf, scheduled_time, run_type);
-
-            --DROP INDEX IF EXISTS orcha.idx_orcha_runs_task_set_scheduled;
-            CREATE INDEX IF NOT EXISTS idx_orcha_runs_task_set_scheduled
-            ON orcha.runs (task_idf, scheduled_time, set_idf, run_type);
-
-            --DROP INDEX IF EXISTS orcha.idx_orcha_runs_taskidf_status_progress;
-            CREATE INDEX IF NOT EXISTS idx_orcha_runs_taskidf_status_progress
-            ON orcha.runs (task_idf, status, progress);
-        '''))
 
 """
 ===================================================================
@@ -367,19 +300,29 @@ class TaskItem():
 
 
     @staticmethod
+    def _from_row(row) -> TaskItem:
+        """
+        Builds a TaskItem from a database row, keeping only the columns defined
+        on the canonical tasks table (orcha.core.tables). This tolerates any
+        extra/legacy columns that may exist on a deployed table without breaking.
+        """
+        allowed = tables.tasks.columns.keys()
+        return TaskItem(**{k: v for k, v in row._asdict().items() if k in allowed})
+
+    @staticmethod
     def get_all() -> list[TaskItem]:
         """
         Returns all tasks in the database as a list of TaskItem instances.
         """
         confirm_initialised()
         data = get_latest_versions(
-            s_maker=s_maker,
+            session_maker=session_maker,
             table='orcha.tasks',
             key_columns=['task_idk'],
             version_column='version',
             select_columns='*'
         )
-        return [TaskItem(**(x._asdict())) for x in data]
+        return [TaskItem._from_row(x) for x in data]
 
     @staticmethod
     def get(task_idk: str) -> TaskItem | None:
@@ -388,14 +331,14 @@ class TaskItem():
         """
         confirm_initialised()
         data = get_latest_versions(
-            s_maker=s_maker,
+            session_maker=session_maker,
             table='orcha.tasks',
             key_columns=['task_idk'],
             version_column='version',
             select_columns='*',
             match_pairs=[('task_idk', '=', task_idk)]
         )
-        tasks = [TaskItem(**(x._asdict())) for x in data]
+        tasks = [TaskItem._from_row(x) for x in data]
         if len(tasks) == 0:
             return None
         if len(tasks) > 1:
@@ -516,7 +459,7 @@ class TaskItem():
         # Only delete tasks that aren't enabled
         if self.status == 'enabled':
             raise Exception('Cannot delete enabled task')
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             # Delete the task and all runs
             session.execute(sql('''
                 DELETE FROM orcha.tasks
@@ -531,7 +474,7 @@ class TaskItem():
         Note: Either updates the current version or creates a new version
         if the version has been updated elsewhere.
         """
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             task_record = {
                 'task_idk': self.task_idk,
                 'version': self.version,
@@ -766,7 +709,7 @@ class TaskItem():
         """
         if max_age is None:
             return 0
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             query = '''
                 WITH deleted AS (
                     DELETE
@@ -1028,7 +971,7 @@ class RunItem():
         if schedule is not None and schedule.set_idk not in task_schedule_sets:
             raise Exception('Schedule set not found for task')
 
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             filter_sets = [
                 RunRecord.task_idf == task.task_idk,
                 RunRecord.scheduled_time >= since
@@ -1105,7 +1048,7 @@ class RunItem():
         confirm_initialised()
         task = RunItem._task_id_populate(task)
 
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             filter_sets = [
                 RunRecord.task_idf == task.task_idk
             ]
@@ -1135,7 +1078,7 @@ class RunItem():
         Returns a run by its run_id. If no run is found then None is returned.
         """
         confirm_initialised()
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             data = session.query(RunRecord).filter(
                 RunRecord.run_idk == run_id).all()
             if len(data) == 0:
@@ -1158,7 +1101,7 @@ class RunItem():
         Deletes the run from the database.
         #### Note: Does not delete the instance, just the database entry.
         """
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             session.execute(sql('''
                 DELETE FROM orcha.runs
                 WHERE run_idk = :run_idk
@@ -1166,7 +1109,7 @@ class RunItem():
 
     def _update_db(self, ignore_updated_check: bool = False):
         try:
-            with s_maker.begin() as session:
+            with session_maker.begin() as session:
                 # TODO potential code for detecting concurrent updates
                 #       and avoiding overwriting changes
                 # update the run in the database if updated == updated
@@ -1252,7 +1195,7 @@ class RunItem():
         # one column and nothing else; don't need to reload the run as
         # we don't care if we 'roll back' a last_active time every now and then
         self.last_active = current_time()
-        with s_maker.begin() as session:
+        with session_maker.begin() as session:
             session.execute(sql('''
                 UPDATE orcha.runs
                 SET last_active = :last_active
