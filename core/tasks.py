@@ -122,6 +122,7 @@ def _setup_sqlalchemy(
         status = Column(String)
         notes = Column(String)
         task_config = Column(PG_JSON)
+        source = Column(String, nullable=True)
 
     class RunRecord(Base):
         __tablename__ = 'runs'
@@ -328,6 +329,7 @@ class TaskItem():
     last_active: dt
     status: TaskStatus
     notes: str | None = None
+    source: str | None = None
     task_monitors: list[TaskMonitorBase] = []
 
     def __init__(
@@ -335,7 +337,7 @@ class TaskItem():
             description: str, schedule_sets: list[ScheduleSet] | list[dict],
             thread_group: str, last_active: dt, status: TaskStatus,
             task_tags: list[str], notes: str | None = None,
-            task_config: dict = {}
+            task_config: dict = {}, source: str | None = None
         ) -> None:
 
         confirm_initialised()
@@ -364,6 +366,7 @@ class TaskItem():
         self.status = status
         self.notes = notes
         self.task_config = task_config
+        self.source = source
 
 
     @staticmethod
@@ -413,6 +416,7 @@ class TaskItem():
             task_tags: list[str] = [],
             register_with_runner: bool = True,
             task_monitors: list[TaskMonitorBase] = [],
+            source: str | None = 'code',
         ):
         """
         Creates a new task with the given parameters. This will create a new
@@ -462,7 +466,8 @@ class TaskItem():
             current_task.name != name or
             current_task.description != description or
             current_task.schedule_sets != new_s_sets or
-            current_task.thread_group != thread_group
+            current_task.thread_group != thread_group or
+            current_task.source != source
         ):
             update_needed = True
 
@@ -488,7 +493,8 @@ class TaskItem():
             thread_group=thread_group,
             last_active=version,
             status=task_status,
-            notes=None
+            notes=None,
+            source=source,
         )
 
         task.task_function = task_function # type: ignore
@@ -518,13 +524,19 @@ class TaskItem():
         if self.status == 'enabled':
             raise Exception('Cannot delete enabled task')
         with s_maker.begin() as session:
-            # Delete the task and all runs
-            session.execute(sql('''
-                DELETE FROM orcha.tasks
-                WHERE task_idk = :task_idk;
-                DELETE FROM orcha.runs
-                WHERE task_idf = :task_idk;
-            '''), {'task_idk': self.task_idk})
+            # Delete runs first (FK dependency), then the task — two statements
+            # because psycopg rejects multiple commands in a single prepared statement.
+            session.execute(sql('DELETE FROM orcha.runs WHERE task_idf = :task_idk'), {'task_idk': self.task_idk})
+            session.execute(sql('DELETE FROM orcha.tasks WHERE task_idk = :task_idk'), {'task_idk': self.task_idk})
+
+        # Remove the pickle_store entry so the task isn't recreated on workspace restart.
+        # pickle_idk convention from pickle_store.store_task_definition is f'task_{task_idk}'.
+        from orcha.core import pickle_store as _pickle_store
+        if _pickle_store.is_initialised:
+            try:
+                _pickle_store.delete(f'task_{self.task_idk}')
+            except Exception:
+                pass
 
     def _update_db(self) -> None:
         """
@@ -545,7 +557,8 @@ class TaskItem():
                 'last_active': self.last_active,
                 'status': self.status,
                 'notes': self.notes,
-                'task_config': self.task_config
+                'task_config': self.task_config,
+                'source': self.source,
             }
 
             insert_stmt = insert(TaskRecord).values(task_record)

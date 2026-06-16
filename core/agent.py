@@ -33,7 +33,7 @@ from orcha.common.modules.sqlite import SQLiteEntity
 from orcha.common.modules.web import RestEntity as WebRestEntity
 from orcha.common.modules.web import RestSink as WebRestSink
 from orcha.common.modules.web import RestSource as WebRestSource
-from orcha.core import pickle_store
+from orcha.core import tasks, pickle_store
 from orcha.core.module_base import (
     BinarySink,
     DatabaseEntity,
@@ -396,6 +396,7 @@ class DeployPickleRequest(BaseModel):
     module_idk: str | None = None
     metadata: dict | None = None
     created_by: str | None = None
+    pickle_idk: str | None = None  # if set, overwrite this existing pickle
 
 
 class DeployPickleTaskRequest(BaseModel):
@@ -544,6 +545,7 @@ class Agent:
                     'schedule_sets': [s.to_dict() for s in task.schedule_sets],
                     'last_active': task.last_active.isoformat() if task.last_active else None,
                     'task_config': task.task_config if hasattr(task, 'task_config') else {},
+                    'source': task.source,
                 })
             return {
                 'environment_id': config.environment_id,
@@ -586,6 +588,19 @@ class Agent:
                     'error': str(e),
                 }
 
+        @app.get('/agent/pickle/{pickle_idk}')
+        def get_pickle(pickle_idk: str):
+            """Get a single pickle by ID, including decrypted source for task defs."""
+            try:
+                info = pickle_store.get_by_idk(pickle_idk)
+                if info is None:
+                    raise HTTPException(status_code=404, detail=f'Pickle not found: {pickle_idk}')
+                return info.to_dict()
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
         @app.post('/agent/pickle/deploy')
         def deploy_pickle(request: DeployPickleRequest):
             """
@@ -618,6 +633,7 @@ class Agent:
                     metadata=request.metadata,
                     created_by=request.created_by,
                     environment_id=config.environment_id,
+                    pickle_idk=request.pickle_idk,
                 )
                 return {'status': 'success', 'pickle_idk': idk}
             except Exception as e:
@@ -757,6 +773,10 @@ class Agent:
             stdout_capture = io.StringIO()
             try:
                 local_ns: dict = {}
+                # Not a security risk - the UI editor process
+                # offers the same security as the user writing
+                # python directly in the environment; i.e. they can
+                # already run arbitrary code.
                 exec(request.source_code, {
                     '__builtins__': __builtins__,
                     'secrets': config.secrets,
@@ -771,9 +791,9 @@ class Agent:
                             'error_type': 'DefinitionError',
                             'message': "Code must define 'task_function'",
                         }
-                    # Run with None args to smoke-test
                     with contextlib.redirect_stdout(stdout_capture):
-                        task_func(None, None, {})
+                        dummy_run = tasks.RunItem.create_dummy()
+                        task_func(None, dummy_run, {})
                 else:
                     result_obj = local_ns.get('result')
                     if result_obj is None:
@@ -787,6 +807,7 @@ class Agent:
                 return {
                     'status': 'success',
                     'message': 'Code executed successfully',
+                    'dummy_run': str(dummy_run) if request.pickle_type == 'task' else None,
                     'stdout': captured[:5000] if captured else '',
                 }
             except Exception as e:

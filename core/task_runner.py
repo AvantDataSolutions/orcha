@@ -545,6 +545,7 @@ class TaskRunner():
                         },
                         task_tags=task_def.get('task_tags', ['pickle']),
                         register_with_runner=True,
+                        source='ui',
                     )
                     runner_log.add_entry(
                         actor='task_runner', category='pickle_tasks',

@@ -235,6 +235,47 @@ def load_task_definitions(
     return results
 
 
+def get_task_source(pickle_idk: str) -> str | None:
+    """
+    Return the source code stored inside an encrypted task definition blob.
+    Returns None if the pickle is not found or is not a task definition.
+    """
+    _check_initialised()
+    import json as _json
+    with s_maker.begin() as session:
+        record = session.query(PickleRecord).filter(
+            PickleRecord.pickle_idk == pickle_idk,
+            PickleRecord.pickle_type == 'task',
+        ).first()
+        if record is None:
+            return None
+        try:
+            raw_bytes = _fernet.decrypt(record.pickle_data)  # type: ignore
+            task_def = _json.loads(raw_bytes.decode('utf-8'))
+            return task_def.get('source_code')
+        except Exception:
+            return None
+
+
+def get_by_idk(pickle_idk: str) -> 'PickleInfo | None':
+    """
+    Return a single PickleInfo by its pickle_idk, including decrypted
+    source_code for task definitions.
+    """
+    _check_initialised()
+    with s_maker.begin() as session:
+        record = session.query(PickleRecord).filter(
+            PickleRecord.pickle_idk == pickle_idk
+        ).first()
+        if record is None:
+            return None
+        info = PickleInfo.from_record(record)
+        # For tasks, source_code is inside the encrypted blob
+        if record.pickle_type == 'task' and info.source_code is None:
+            info.source_code = get_task_source(pickle_idk)
+        return info
+
+
 def encrypt_and_store(
         pickle_type: PickleType,
         name: str,
