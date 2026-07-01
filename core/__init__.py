@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from orcha import migrations
-from orcha.core import database, monitors, scheduler, tasks
+from orcha.core import database, monitors, thread_monitor
+# Imported for their side effects, not referenced directly here: loading these
+# modules registers their ORM record classes (TaskRecord, SchedulerRecord) onto
+# the shared Base, so they are mapped as soon as `orcha.core` is imported - see
+# the note in initialise(). Do not remove.
+from orcha.core import scheduler, tasks  # noqa: F401
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Broker, Consumer, Producer
 from orcha.utils import kvdb
@@ -19,6 +24,7 @@ def initialise(
         kvdb_postgres_db: str | None = None,
         kvdb_postgres_schema: str | None = None,
         run_migrations: bool = True,
+        instance_id: str | None = None,
     ):
     """
     This function must be called before any other functions in the orcha package.
@@ -27,6 +33,12 @@ def initialise(
     - Configures the shared sqlalchemy connection used by tasks, scheduler and logging
     - Sets up the kvdb store
     - (Optional) Sets up the monitor config if using monitors and alerts
+    #### Args
+    - instance_id: The name this process reports its thread health under in the
+      UI. Defaults to `application_name`. Use a stable name (the default is) so a
+      restart reuses the same id and overwrites its old rows instead of leaving a
+      ghost "offline" instance behind. Give distinct ids to multiple processes
+      that share an `application_name` (e.g. several task-runner replicas).
     #### Returns
     - LogManager: The orcha log manager to be used for custom logging
     """
@@ -56,6 +68,11 @@ def initialise(
         db=orcha_db,
         application_name=application_name,
     )
+
+    # Name the thread-health instance so the UI shows a meaningful, stable id
+    # (defaults to application_name) rather than the hostname:pid fallback. Set
+    # before any managed threads (scheduler/task runner) start.
+    thread_monitor.set_instance_id(instance_id or application_name)
 
     lm = LogManager('orcha')
 

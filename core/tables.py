@@ -24,7 +24,9 @@ see it; there is nowhere else to keep in sync.
 from sqlalchemy import (
     Column,
     DateTime,
+    Float,
     Index,
+    Integer,
     LargeBinary,
     MetaData,
     String,
@@ -115,6 +117,30 @@ kvdb_items = Table(
     Column('type', String, nullable=False),
     Column('expiry', DateTime),
     Column('salt', LargeBinary, nullable=True),
+    schema=ORCHA_SCHEMA,
+)
+
+# Health snapshot of supervised background threads (see
+# orcha.core.thread_monitor). One row per (process instance, thread); written
+# by each process's ThreadSupervisor and read cross-process by the UI.
+thread_health = Table(
+    'thread_health',
+    metadata,
+    Column('instance_id', String, primary_key=True),
+    Column('thread_name', String, primary_key=True),
+    Column('thread_group', String),
+    Column('state', String),
+    Column('interval_s', Float),
+    Column('heartbeat_timeout_s', Float),
+    Column('started_at', DateTime(timezone=False)),
+    Column('last_heartbeat', DateTime(timezone=False)),
+    Column('last_tick_at', DateTime(timezone=False)),
+    Column('updated_at', DateTime(timezone=False)),
+    Column('restart_count', Integer),
+    Column('error_count', Integer),
+    Column('consecutive_errors', Integer),
+    Column('last_error', String),
+    Column('last_error_at', DateTime(timezone=False)),
     schema=ORCHA_SCHEMA,
 )
 

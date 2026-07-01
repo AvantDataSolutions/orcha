@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta as td
@@ -13,6 +11,7 @@ from orcha.core import monitors, tables
 from orcha.core.database import Base, session_maker
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
 from orcha.core.tasks import TaskItem
+from orcha.core.thread_monitor import ManagedThread
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
 
@@ -354,10 +353,14 @@ class Scheduler:
             monitor.add_scheduler(self)
 
         self.running_state: RunningState = RunningState.running
-        self.thread = None
-        self.prune_thread = None
-        self.fail_hist_thread = None
-        self.refresh_tasks_thread = None
+        # Long-lived background loops are now run as supervised ManagedThreads
+        # (see orcha.core.thread_monitor). They are created lazily in start()
+        # and tracked here so start()/stop() remain idempotent.
+        self.thread: ManagedThread | None = None
+        self.prune_thread: ManagedThread | None = None
+        self.fail_hist_thread: ManagedThread | None = None
+        self.refresh_tasks_thread: ManagedThread | None = None
+        self.last_active_thread: ManagedThread | None = None
 
         self.task_refresh_interval = config.task_refresh_interval
         self.fail_unstarted_runs = config.fail_unstarted_runs
@@ -377,10 +380,17 @@ class Scheduler:
             self.disable_stale_tasks = disable_stale_tasks
             raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
 
-        # Start the last active check thread
-        threading.Thread(
-            target=self._thread_helper_check_last_active
-        ).start()
+        # Start the last active check thread. Previously a bare, un-stoppable
+        # `while True` thread; now a supervised ManagedThread that can be
+        # stopped and is restarted automatically if it dies.
+        self.last_active_thread = ManagedThread(
+            name=f'{self.scheduler_idk}:scheduler:check_last_active',
+            group='scheduler',
+            tick=self._tick_check_last_active,
+            interval=120,
+            heartbeat_timeout=300,
+        )
+        self.last_active_thread.start()
 
         # TODO Move to using scheduler_idks as if we run multiple schedulers
         # we'll only record when the latest one started
@@ -432,30 +442,28 @@ class Scheduler:
                     data: dt = record.last_active # type: ignore
                     return data
 
-    def _thread_helper_check_last_active(self):
+    def _tick_check_last_active(self):
         """
-        This is the thread function that will check the last active time
-        of the scheduler and send a messages if it's been inactive for over
-        5 minutes.
+        One iteration of the last-active check: send a message if the scheduler
+        has been inactive for over 5 minutes. Run on an interval by a
+        ManagedThread.
         """
-        while True:
-            # If the scheduler hasn't been run/no last active
-            # then we don't want to send a message - mostly to avoid
-            # sending a message on the first run and at startup
-            time.sleep(120)
-            last_active = self.get_last_active()
-            if last_active is not None:
-                # if it's over 10 minutes since the last active time
-                # then assume roughly 5 alerts have been sent and stop
-                if last_active < current_time() - td(minutes=10):
-                    continue
-                elif last_active < current_time() - td(minutes=5):
-                    Producer().send_message(
-                        channel=MqueueChannels.inactive_scheduler,
-                        message=MqueueChannels.inactive_scheduler.message_type(
-                            scheduler_id=self.scheduler_idk
-                        )
+        # If the scheduler hasn't been run/no last active
+        # then we don't want to send a message - mostly to avoid
+        # sending a message on the first run and at startup
+        last_active = self.get_last_active()
+        if last_active is not None:
+            # if it's over 10 minutes since the last active time
+            # then assume roughly 5 alerts have been sent and stop
+            if last_active < current_time() - td(minutes=10):
+                return
+            elif last_active < current_time() - td(minutes=5):
+                Producer().send_message(
+                    channel=MqueueChannels.inactive_scheduler,
+                    message=MqueueChannels.inactive_scheduler.message_type(
+                        scheduler_id=self.scheduler_idk
                     )
+                )
 
     def update_active(self):
         """
@@ -484,26 +492,65 @@ class Scheduler:
             )
         )
         self.running_state = RunningState.running
-        # Only start threads if they are None (dont exist) or they are no
-        # longer alive (have finished/died/stopped)
-        if self.thread is None or not self.thread.is_alive():
-            # Start the run scheduling thread
-            self.thread = threading.Thread(target=self._process_schedules)
-            self.thread.start()
+        # All loops gate their work on the scheduler being in the 'running'
+        # state, so they keep heartbeating (but idle) when stopped/paused.
+        is_running = lambda: self.running_state == RunningState.running
+
+        # ManagedThread.start() is idempotent (no-op if already alive) and the
+        # supervisor restarts any loop that dies, so we simply (re)create and
+        # start each loop here.
+        if self.thread is None:
+            self.thread = ManagedThread(
+                name=f'{self.scheduler_idk}:scheduler:process_schedules',
+                group='scheduler',
+                tick=self._tick_process_schedules,
+                interval=15,
+                heartbeat_timeout=300,
+            )
+        self.thread.start()
+
         # Start the run pruning thread
         if self.prune_runs_max_age is not None:
-            if self.prune_thread is None or not self.prune_thread.is_alive():
-                self.prune_thread = threading.Thread(target=self._prune_runs_and_logs)
-                self.prune_thread.start()
+            if self.prune_thread is None:
+                self.prune_thread = ManagedThread(
+                    name=f'{self.scheduler_idk}:scheduler:prune',
+                    group='scheduler',
+                    tick=self._tick_prune,
+                    interval=self.prune_interval,
+                    startup_delay=self.prune_interval,
+                    run_condition=is_running,
+                    # Pruning is infrequent and can legitimately be slow, so we
+                    # don't flag stale heartbeats for it.
+                    heartbeat_timeout=None,
+                )
+            self.prune_thread.start()
+
         # Start the historical run failure thread
         if self.fail_historical_runs:
-            if self.fail_hist_thread is None or not self.fail_hist_thread.is_alive():
-                self.fail_hist_thread = threading.Thread(target=self._fail_historical)
-                self.fail_hist_thread.start()
+            if self.fail_hist_thread is None:
+                self.fail_hist_thread = ManagedThread(
+                    name=f'{self.scheduler_idk}:scheduler:fail_historical',
+                    group='scheduler',
+                    tick=self._tick_fail_historical,
+                    interval=self.fail_historical_interval,
+                    startup_delay=60,
+                    run_condition=is_running,
+                    heartbeat_timeout=None,
+                )
+            self.fail_hist_thread.start()
+
         # Start the task refreshing thread
-        if self.refresh_tasks_thread is None or not self.refresh_tasks_thread.is_alive():
-            self.refresh_tasks_thread = threading.Thread(target=self._refresh_tasks)
-            self.refresh_tasks_thread.start()
+        if self.refresh_tasks_thread is None:
+            self.refresh_tasks_thread = ManagedThread(
+                name=f'{self.scheduler_idk}:scheduler:refresh_tasks',
+                group='scheduler',
+                tick=self._tick_refresh_tasks,
+                interval=self.task_refresh_interval,
+                startup_delay=self.task_refresh_interval,
+                run_condition=is_running,
+                heartbeat_timeout=max(self.task_refresh_interval * 4, 120),
+            )
+        self.refresh_tasks_thread.start()
         return self.thread
 
     def stop(self):
@@ -516,8 +563,15 @@ class Scheduler:
             actor='scheduler', category='status', text='Stopping', json={}
         )
         self.running_state = RunningState.stopped
-        if self.thread is not None:
-            self.thread.join()
+        for managed in (
+            self.thread,
+            self.prune_thread,
+            self.fail_hist_thread,
+            self.refresh_tasks_thread,
+            self.last_active_thread,
+        ):
+            if managed is not None:
+                managed.stop()
 
     def pause(self):
         """
@@ -525,174 +579,167 @@ class Scheduler:
         """
         raise NotImplementedError('Pausing the scheduler is not implemented yet.')
 
-    def _prune_runs_and_logs(self):
-        while self.running_state != RunningState.stopped:
-            time.sleep(self.prune_interval)
-            # Loop while we're not stopped, but only do stuff if we're running
-            if self.running_state != RunningState.running:
-                continue
-            if self.prune_runs_max_age is not None:
-                for task in self.all_tasks:
-                    del_count = task.prune_runs(self.prune_runs_max_age)
-                    scheduler_log.add_entry(
-                        actor='scheduler', category='prune_runs', text='Pruning runs',
-                        json={
-                            'task_id': task.task_idk,
-                            'max_age': str(self.prune_runs_max_age),
-                            'deleted_count': del_count
-                        }
-                    )
-            if self.prune_logs_max_age is not None:
-                del_count = scheduler_log.prune(self.prune_logs_max_age)
+    def _tick_prune(self):
+        """
+        One iteration of run/log pruning. Run on an interval by a ManagedThread
+        and gated on the scheduler being in the running state.
+        """
+        if self.prune_runs_max_age is not None:
+            for task in self.all_tasks:
+                del_count = task.prune_runs(self.prune_runs_max_age)
                 scheduler_log.add_entry(
-                    actor='scheduler', category='prune_logs', text='Pruning logs',
+                    actor='scheduler', category='prune_runs', text='Pruning runs',
                     json={
-                        'max_age': str(self.prune_logs_max_age),
+                        'task_id': task.task_idk,
+                        'max_age': str(self.prune_runs_max_age),
                         'deleted_count': del_count
                     }
                 )
-
-    def _fail_historical(self):
-        """
-        This will fail:
-        - Runs that were scheduled or started but didn't finish within the time
-        - Runs that have been inactive for over 5 minutes
-        """
-        while self.running_state != RunningState.stopped:
-            # If the scheduler is being started in the same environment as the
-            # task runner, then we need to wait for the task runner to start
-            # and load the tasks before we can check for historical runs
-            # otherwise we won't have any tasks to check
-            time.sleep(60)
-            # Loop while we're not stopped, but only do stuff if we're running
-            if self.running_state != RunningState.running:
-                continue
-            if not self.fail_historical_runs or self.fail_historical_age is None:
-                continue
-            for task in self.all_tasks:
-                open_runs = task.get_running_runs() + task.get_queued_runs()
-                historical_count = 0
-                for run in open_runs:
-                    run_age = current_time() - run.scheduled_time
-                    if run_age > self.fail_historical_age:
-                        run.set_status(
-                            status='failed',
-                            output={
-                                'message': 'Historical run failed to start/finish'
-                            },
-                            send_alert=False
-                        )
-                        run.set_progress(
-                            progress='complete',
-                            zero_duration=True,
-                        )
-                        Producer().send_message(
-                            channel=MqueueChannels.historical_run,
-                            message=MqueueChannels.historical_run.message_type(
-                                scheduler_id=self.scheduler_idk,
-                                task_id=task.task_idk,
-                                run_id=run.run_idk,
-                                note='Historical run failed to start/finish'
-                            )
-                        )
-                        historical_count += 1
-                    elif run.progress == 'running':
-                        if run.last_active is not None:
-                            if run.last_active < current_time() - td(minutes=5):
-                                run.set_status(
-                                    status='failed',
-                                    output={
-                                        'message': 'Run has been inactive for over 5 minutes'
-                                    },
-                                    send_alert=False
-                                )
-                                run.set_progress(
-                                    progress='complete',
-                                    zero_duration=True,
-                                )
-                                Producer().send_message(
-                                    channel=MqueueChannels.historical_run,
-                                    message=MqueueChannels.historical_run.message_type(
-                                        scheduler_id=self.scheduler_idk,
-                                        task_id=task.task_idk,
-                                        run_id=run.run_idk,
-                                        note='Run has been inactive for over 5 minutes'
-                                    )
-                                )
-                                historical_count += 1
-                scheduler_log.add_entry(
-                    actor='scheduler', category='fail_historical_runs',
-                    text='Failing historical runs',
-                    json={
-                        'task_id': task.task_idk,
-                        'max_age': str(self.fail_historical_age),
-                        'failed_count': historical_count
-                    }
-                )
-            # Sleep after each check so on first load it does a check and
-            # flush of all 'old' runs
-            time.sleep(self.fail_historical_interval)
-
-    def _refresh_tasks(self):
-        while self.running_state != RunningState.stopped:
-            time.sleep(self.task_refresh_interval)
-            # Loop while we're not stopped, but only do stuff if we're running
-            if self.running_state == RunningState.running:
-                self.all_tasks = TaskItem.get_all()
-                scheduler_log.add_entry(
-                    actor='scheduler', category='refresh_tasks',
-                    text='Refreshing tasks',
-                    json={'task_count': len(self.all_tasks)}
-                )
-
-    def _process_schedules(self):
-        while self.running_state != RunningState.stopped:
-            time.sleep(15)
-            # log that we're processing schedules and log which tasks
+        if self.prune_logs_max_age is not None:
+            del_count = scheduler_log.prune(self.prune_logs_max_age)
             scheduler_log.add_entry(
-                actor='main_loop', category='status', text='Processing schedules',
+                actor='scheduler', category='prune_logs', text='Pruning logs',
                 json={
-                    'task_count': len(self.all_tasks),
-                    'task_names': ', '.join([task.task_idk for task in self.all_tasks])
+                    'max_age': str(self.prune_logs_max_age),
+                    'deleted_count': del_count
                 }
             )
-            self.update_active()
-            # Loop while we're not stopped, but only do stuff if we're running
-            if self.running_state != RunningState.running:
-                continue
 
-            if len(self.all_tasks) == 0:
-                self.all_tasks = TaskItem.get_all()
+    def _tick_fail_historical(self):
+        """
+        One iteration of historical run failure handling. This will fail:
+        - Runs that were scheduled or started but didn't finish within the time
+        - Runs that have been inactive for over 5 minutes
 
-            for task in self.all_tasks:
-                # Only check enabled tasks (e.g. no disabled/inactive tasks)
-                if task.status != 'enabled':
-                    continue
-                for schedule in task.schedule_sets:
-                    is_due, last_run = task.is_run_due_with_last(schedule)
-                    if is_due:
-                        # TODO Check for old queued/running runs and set them to failed
-                        # No longer failing runs that are queued and relying on
-                        # the historical run failure to do the work
-                        if self.disable_stale_tasks and last_run is not None:
-                            # If the task hasn't been active since the last run,
-                            # then it's stale and should be disabled.
-                            # Tasks should be checked every 5s, and runs at most frequent, every 1 minute
-                            # so a task should have been active many times since the last run
-                            if task.last_active < min(last_run.scheduled_time, current_time() - td(minutes=5)):
-                                task.set_status('inactive', 'Task has been inactive since last scheduled run')
-                                Producer().send_message(
-                                    channel=MqueueChannels.inactive_task,
-                                    message=MqueueChannels.inactive_task.message_type(
-                                        scheduler_id=self.scheduler_idk,
-                                        task_id=task.task_idk
-                                    )
-                                )
-                                continue
-                        # print('Run due for task:', task.task_idk)
-                        run = task.schedule_run(
-                            schedule=schedule,
-                            schedule_by_id=self.scheduler_idk
+        The ManagedThread applies a startup delay so that, when the scheduler is
+        started in the same environment as the task runner, the runner has time
+        to start and load tasks before the first check.
+        """
+        if not self.fail_historical_runs or self.fail_historical_age is None:
+            return
+        for task in self.all_tasks:
+            open_runs = task.get_running_runs() + task.get_queued_runs()
+            historical_count = 0
+            for run in open_runs:
+                run_age = current_time() - run.scheduled_time
+                if run_age > self.fail_historical_age:
+                    run.set_status(
+                        status='failed',
+                        output={
+                            'message': 'Historical run failed to start/finish'
+                        },
+                        send_alert=False
+                    )
+                    run.set_progress(
+                        progress='complete',
+                        zero_duration=True,
+                    )
+                    Producer().send_message(
+                        channel=MqueueChannels.historical_run,
+                        message=MqueueChannels.historical_run.message_type(
+                            scheduler_id=self.scheduler_idk,
+                            task_id=task.task_idk,
+                            run_id=run.run_idk,
+                            note='Historical run failed to start/finish'
                         )
-                        if run is None:
-                            raise Exception('Failed to create run')
+                    )
+                    historical_count += 1
+                elif run.progress == 'running':
+                    if run.last_active is not None:
+                        if run.last_active < current_time() - td(minutes=5):
+                            run.set_status(
+                                status='failed',
+                                output={
+                                    'message': 'Run has been inactive for over 5 minutes'
+                                },
+                                send_alert=False
+                            )
+                            run.set_progress(
+                                progress='complete',
+                                zero_duration=True,
+                            )
+                            Producer().send_message(
+                                channel=MqueueChannels.historical_run,
+                                message=MqueueChannels.historical_run.message_type(
+                                    scheduler_id=self.scheduler_idk,
+                                    task_id=task.task_idk,
+                                    run_id=run.run_idk,
+                                    note='Run has been inactive for over 5 minutes'
+                                )
+                            )
+                            historical_count += 1
+            scheduler_log.add_entry(
+                actor='scheduler', category='fail_historical_runs',
+                text='Failing historical runs',
+                json={
+                    'task_id': task.task_idk,
+                    'max_age': str(self.fail_historical_age),
+                    'failed_count': historical_count
+                }
+            )
+
+    def _tick_refresh_tasks(self):
+        """One iteration of reloading the task list from the database."""
+        self.all_tasks = TaskItem.get_all()
+        scheduler_log.add_entry(
+            actor='scheduler', category='refresh_tasks',
+            text='Refreshing tasks',
+            json={'task_count': len(self.all_tasks)}
+        )
+
+    def _tick_process_schedules(self):
+        """
+        One iteration of the main scheduling loop: update the scheduler's active
+        time and create runs for any tasks that are due. The active-time update
+        and logging happen every tick (the scheduler heartbeat), while run
+        creation only happens while running.
+        """
+        # log that we're processing schedules and log which tasks
+        scheduler_log.add_entry(
+            actor='main_loop', category='status', text='Processing schedules',
+            json={
+                'task_count': len(self.all_tasks),
+                'task_names': ', '.join([task.task_idk for task in self.all_tasks])
+            }
+        )
+        self.update_active()
+        # Only create runs if we're running (this loop isn't run_condition
+        # gated so the heartbeat above always ticks)
+        if self.running_state != RunningState.running:
+            return
+
+        if len(self.all_tasks) == 0:
+            self.all_tasks = TaskItem.get_all()
+
+        for task in self.all_tasks:
+            # Only check enabled tasks (e.g. no disabled/inactive tasks)
+            if task.status != 'enabled':
+                continue
+            for schedule in task.schedule_sets:
+                is_due, last_run = task.is_run_due_with_last(schedule)
+                if is_due:
+                    # TODO Check for old queued/running runs and set them to failed
+                    # No longer failing runs that are queued and relying on
+                    # the historical run failure to do the work
+                    if self.disable_stale_tasks and last_run is not None:
+                        # If the task hasn't been active since the last run,
+                        # then it's stale and should be disabled.
+                        # Tasks should be checked every 5s, and runs at most frequent, every 1 minute
+                        # so a task should have been active many times since the last run
+                        if task.last_active < min(last_run.scheduled_time, current_time() - td(minutes=5)):
+                            task.set_status('inactive', 'Task has been inactive since last scheduled run')
+                            Producer().send_message(
+                                channel=MqueueChannels.inactive_task,
+                                message=MqueueChannels.inactive_task.message_type(
+                                    scheduler_id=self.scheduler_idk,
+                                    task_id=task.task_idk
+                                )
+                            )
+                            continue
+                    # print('Run due for task:', task.task_idk)
+                    run = task.schedule_run(
+                        schedule=schedule,
+                        schedule_by_id=self.scheduler_idk
+                    )
+                    if run is None:
+                        raise Exception('Failed to create run')

@@ -6,6 +6,7 @@ import traceback
 
 from orcha.core import tasks
 from orcha.core.tasks import RunItem, ScheduleSet, TaskItem
+from orcha.core.thread_monitor import ManagedThread
 from orcha.utils import kvdb
 from orcha.utils import threading as orcha_threading
 from orcha.utils.log import LogManager
@@ -54,18 +55,31 @@ class ThreadHandler():
     def __init__(self, thread_group: str):
         self.is_running = False
         self.thread_group = thread_group
-        self.thread = None
+        # The handler loop now runs as a supervised ManagedThread so a crash in
+        # task processing restarts the handler instead of silently killing the
+        # whole thread group, and its health is visible in the UI.
+        self.thread: ManagedThread | None = None
         self.tasks: list[TaskItem] = []
 
     def start(self):
         """
-        Start the thread handler. Will raise an exception if the
-        thread is already running.
+        Start the thread handler. Safe to call repeatedly: if the handler is
+        already running this is a no-op.
         """
         self.is_running = True
-        if self.thread is not None:
-            raise Exception('Thread already started')
-        self.thread = threading.Thread(target=self._run, name=self.thread_group)
+        if self.thread is None:
+            self.thread = ManagedThread(
+                name=f'task_runner:{self.thread_group}',
+                group='task_runner',
+                tick=self._run_once,
+                interval=15,
+                run_condition=lambda: self.is_running,
+                # A single tick runs every queued task in the group and can
+                # legitimately take a long time (up to the task timeout), so we
+                # don't flag stale heartbeats; liveness + auto-restart still
+                # apply. The loop and helper threads beat() during processing.
+                heartbeat_timeout=None,
+            )
         self.thread.start()
 
     def stop(self):
@@ -75,7 +89,7 @@ class ThreadHandler():
         """
         self.is_running = False
         if self.thread is not None:
-            self.thread.join()
+            self.thread.stop()
 
     def add_task(self, task: TaskItem):
         """
@@ -102,41 +116,43 @@ class ThreadHandler():
         # marked as inactive by the scheduler as they won't have been updated
         for task in self.tasks:
             task.update_active()
+        # Piggy-back the managed thread's heartbeat on the active-time update so
+        # the thread keeps a fresh heartbeat even during a long-running task.
+        if self.thread is not None:
+            self.thread.beat()
 
-    def _run(self):
+    def _run_once(self):
         """
-        Main helper function for the ThreadHandler to run all tasks.
-        This processes all tasks in the handler every 15 seconds and
-        updates the active time for all tasks before each task is processed.
+        A single pass of the ThreadHandler: reload any externally-updated tasks
+        and process every task in the handler once, updating active times before
+        each task is processed. Run on an interval by a ManagedThread.
         """
-        while self.is_running:
-            # if an external process has updated the task then we need to reload it
-            # otherwise we may be running an old version of the task which will at
-            # the very least set the active time on the old version of the task
-            all_tasks = TaskItem.get_all()
-            tasks_dict = {task.task_idk: task for task in all_tasks}
-            for task in self.tasks:
-                db_task = tasks_dict.get(task.task_idk, None)
-                if db_task and db_task.version != task.version:
-                    # log that the task is being updated
-                    runner_log.add_entry(
-                        actor='main_loop', category='reloading_task',
-                        text='Detected task version change, reloading task',
-                        json={
-                            'message': '',
-                            'task': task.task_idk
-                        }
-                    )
-                    # The database task doesn't have the task function itself
-                    # so we need to copy it over from the current task
-                    db_task.task_function = task.task_function
-                    self.add_task(db_task)
-            for task in self.tasks:
-                # Update all tasks as active outside of processing the task
-                # to make sure we get at least one guaranteed update
-                self.update_active_all_tasks()
-                self.process_task(task)
-            time.sleep(15)
+        # if an external process has updated the task then we need to reload it
+        # otherwise we may be running an old version of the task which will at
+        # the very least set the active time on the old version of the task
+        all_tasks = TaskItem.get_all()
+        tasks_dict = {task.task_idk: task for task in all_tasks}
+        for task in self.tasks:
+            db_task = tasks_dict.get(task.task_idk, None)
+            if db_task and db_task.version != task.version:
+                # log that the task is being updated
+                runner_log.add_entry(
+                    actor='main_loop', category='reloading_task',
+                    text='Detected task version change, reloading task',
+                    json={
+                        'message': '',
+                        'task': task.task_idk
+                    }
+                )
+                # The database task doesn't have the task function itself
+                # so we need to copy it over from the current task
+                db_task.task_function = task.task_function
+                self.add_task(db_task)
+        for task in self.tasks:
+            # Update all tasks as active outside of processing the task
+            # to make sure we get at least one guaranteed update
+            self.update_active_all_tasks()
+            self.process_task(task)
 
     def process_all_tasks(self):
         """
