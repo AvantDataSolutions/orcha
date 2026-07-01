@@ -460,12 +460,15 @@ class TaskItem():
         if self.status == 'enabled':
             raise Exception('Cannot delete enabled task')
         with session_maker.begin() as session:
-            # Delete the task and all runs
+            # Delete the task and all runs. Run as two statements in the same
+            # transaction; a single multi-statement execute() is driver-dependent.
             session.execute(sql('''
                 DELETE FROM orcha.tasks
-                WHERE task_idk = :task_idk;
+                WHERE task_idk = :task_idk
+            '''), {'task_idk': self.task_idk})
+            session.execute(sql('''
                 DELETE FROM orcha.runs
-                WHERE task_idf = :task_idk;
+                WHERE task_idf = :task_idk
             '''), {'task_idk': self.task_idk})
 
     def _update_db(self) -> None:
@@ -543,12 +546,9 @@ class TaskItem():
     def get_schedule_from_id(self, set_idk: str) -> ScheduleSet | None:
         """
         Gets a schedule set by its set_idk. If no schedule set is found then
-        None is returned.
+        None is returned. Alias for get_schedule_set.
         """
-        for schedule in self.schedule_sets:
-            if schedule.set_idk == set_idk:
-                return schedule
-        return None
+        return self.get_schedule_set(set_idk)
 
     def get_last_scheduled(self, schedule: ScheduleSet) -> dt:
         """
@@ -1457,14 +1457,16 @@ class TaskMonitorBase(MonitorBase, ABC):
             monitor_name: str,
             channel: Channel,
             check_function: Callable[[Channel, Message], None],
-            tasks: set[TaskItem] = set(),
+            tasks: set[TaskItem] | None = None,
             exec_function: Callable[[RunItem, int], None] | None = None
         ):
         # Redefine the init method to include the tasks set
         # so that we can add tasks to the monitor in one hit
         # or the monitor can be added to the task on task creation
         super().__init__(alert, monitor_name, channel, check_function)
-        self.tasks = tasks
+        # Build a fresh set per instance; a shared mutable default would be
+        # mutated by add_task across all monitors constructed without one.
+        self.tasks = tasks if tasks is not None else set()
         self.exec_function = exec_function
 
     def add_task(self, task: TaskItem):

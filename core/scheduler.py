@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta as td
@@ -153,7 +154,7 @@ class SchedulerMonitor(MonitorBase):
     def __init__(
             self,
             alert: AlertBase,
-            schedulers: list[Scheduler] = [],
+            schedulers: list[Scheduler] | None = None,
             max_alerts: int = 5
         ):
         """
@@ -170,7 +171,9 @@ class SchedulerMonitor(MonitorBase):
         """
         self.alert = alert
         self.max_alerts = max_alerts
-        self.schedulers = schedulers
+        # Build a fresh list per instance; a shared mutable default would be
+        # mutated by add_scheduler across all monitors constructed without one.
+        self.schedulers = schedulers if schedulers is not None else []
 
         super().__init__(
             alert=alert,
@@ -297,14 +300,14 @@ class OrchaSchedulerConfig:
         This class is used to store the configuration for the orcha scheduler.
 
         ### Options
-        - task_refresh_interval(float = 60): The interval in seconds at which the scheduler will reload the task list from the database.
+        - task_refresh_interval(float = 30): The interval in seconds at which the scheduler will reload the task list from the database.
         - fail_unstarted_runs(bool = True): If True, then when a run is due, but the last run didn't start, then the last run will be set to failed before a new run is created.
         - disable_stale_tasks(bool = True): If True, then when a task hasn't been active since the last run, then the task will be set to inactive.
-        - prune_runs_max_age(td | None = 180): The maximum age of runs to keep in the database. If None, then no runs will be pruned.
-        - prune_logs_max_age(td | None = 180): The maximum age of logs to keep in the database. If None, then no logs will be pruned.
+        - prune_runs_max_age(td | None = td(days=180)): The maximum age of runs to keep in the database. If None, then no runs will be pruned.
+        - prune_logs_max_age(td | None = td(days=180)): The maximum age of logs to keep in the database. If None, then no logs will be pruned.
         - prune_interval(float = 3600): The interval in seconds at which the scheduler will prune the runs and logs.
         - fail_historical_runs(bool = True): If True, fail any unstarted/incomplete runs that are older than fail_historical_age.
-        - fail_historical_age(td | None = 6): The age in hours when an unstarted run should be failed.
+        - fail_historical_age(td | None = td(hours=6)): The age at which an unstarted run should be failed.
         - fail_historical_interval(float = 180): The interval in seconds at which the scheduler will check.
         """
         task_refresh_interval: float = 30
@@ -329,7 +332,7 @@ class Scheduler:
     def __init__(
             self,
             config: OrchaSchedulerConfig = OrchaSchedulerConfig(),
-            monitors: list[SchedulerMonitor] = [],
+            monitors: list[SchedulerMonitor] | None = None,
             fail_unstarted_runs: bool | None = None,
             disable_stale_tasks: bool | None = None,
         ):
@@ -349,7 +352,7 @@ class Scheduler:
         self.scheduler_idk = 'main'
 
         # Bind the scheduler to the monitors
-        for monitor in monitors:
+        for monitor in (monitors or []):
             monitor.add_scheduler(self)
 
         self.running_state: RunningState = RunningState.running
@@ -374,11 +377,19 @@ class Scheduler:
 
         # Overwrite the config with the deprecated parameters
         if fail_unstarted_runs is not None:
+            warnings.warn(
+                'The fail_unstarted_runs parameter is deprecated. Use the OrchaSchedulerConfig class instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self.fail_unstarted_runs = fail_unstarted_runs
-            raise DeprecationWarning('The fail_unstarted_runs parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
         if disable_stale_tasks is not None:
+            warnings.warn(
+                'The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self.disable_stale_tasks = disable_stale_tasks
-            raise DeprecationWarning('The disable_stale_tasks parameter is deprecated. Use the OrchaSchedulerConfig class instead.')
 
         # Start the last active check thread. Previously a bare, un-stoppable
         # `while True` thread; now a supervised ManagedThread that can be
