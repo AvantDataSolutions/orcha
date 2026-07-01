@@ -70,13 +70,7 @@ def empty_database() -> None:
 # --- Controllable clock ------------------------------------------------------
 
 def noop_task(task_item, run_item, cfg):
-    """
-    Default no-op task function for tests.
-
-    Defined at module level (column 0) on purpose: orcha's ``get_config_keys``
-    runs ``ast.parse(inspect.getsource(fn))`` with no dedent, so task functions
-    must not be indented. Real apps define task functions at module level too.
-    """
+    """Default no-op task function for tests (defined at module level, as apps do)."""
     return None
 
 

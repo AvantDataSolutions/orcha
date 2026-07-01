@@ -7,9 +7,8 @@ no polling, no ``time.sleep`` waiting for a background interval. (A single run
 still takes a few seconds because the runner's active-time helper ticks every
 5s, but the result is deterministic.)
 
-Task functions are defined at module level (column 0): orcha's
-``get_config_keys`` parses their source with no dedent, so they must not be
-indented — which is how real apps define task functions anyway.
+Task functions are defined at module level here, mirroring how real apps define
+them (and keeping each test's assertions close to a small, named function).
 """
 from __future__ import annotations
 

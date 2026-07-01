@@ -33,9 +33,9 @@ orcha/tests/
 - **No mqueue broker needed.** `Producer.send_message` is patched to record
   emitted messages, so tests can assert on alerts (inactive task, historical
   run, run failed) without a running broker.
-- **Task functions must be module-level.** Orcha's `get_config_keys` parses a
-  task function's source with no dedent, so task functions can't be indented.
-  Use `helpers.noop_task` or define functions at column 0 (as real apps do).
+- **Task functions.** Defined at module level here, mirroring real apps. (Orcha
+  dedents source before parsing config keys, so indented/nested functions also
+  work.)
 
 ## Running
 

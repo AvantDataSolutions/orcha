@@ -1,5 +1,6 @@
 import ast
 import inspect
+import textwrap
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -106,7 +107,10 @@ def get_config_keys(fnc: Callable) -> dict:
     - dict: A dictionary of all config keys used in the function,
     with the key as the dictionary key and the default value as the dictionary value
     """
-    source = inspect.getsource(fnc)
+    # dedent so functions defined at an indentation (e.g. nested in another
+    # function, class methods, or task functions defined inside tests) parse
+    # correctly rather than raising IndentationError.
+    source = textwrap.dedent(inspect.getsource(fnc))
     tree = ast.parse(source)
 
     class ConfigKeyVisitor(ast.NodeVisitor):
