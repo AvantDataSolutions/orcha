@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime as dt, timedelta as td
+from datetime import UTC, datetime as dt, timedelta as td
 from uuid import uuid4
 
 from orcha.core import tables
@@ -52,7 +52,7 @@ class LogManager:
             # Using add for performance, we never update/merge
             # old log entries
             db.add(LogEntryRecord(
-                created = dt.utcnow(),
+                created = dt.now(UTC),
                 id = str(uuid4()),
                 actor = actor,
                 source = self.source,
@@ -73,7 +73,7 @@ class LogManager:
             return 0
         with session_maker.begin() as db:
             return db.query(LogEntryRecord).filter(
-                LogEntryRecord.created < dt.utcnow() - max_age
+                LogEntryRecord.created < dt.now(UTC) - max_age
             ).delete()
 
     @staticmethod

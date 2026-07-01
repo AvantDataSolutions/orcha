@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime as dt
+from datetime import UTC, datetime as dt
 from enum import IntEnum
 from uuid import uuid4
 
@@ -160,13 +160,13 @@ class AutomationRunRecord(Base):
                 run_key=run_key,
                 run_name=name,
                 run_task_name=task_name,
-                run_start_utctime=dt.utcnow(),
+                run_start_utctime=dt.now(UTC),
             )
             session.add(run)
             return run
 
     def end_run(self, result: str | None, exception: str | None):
-        self.run_end_utctime = dt.utcnow()
+        self.run_end_utctime = dt.now(UTC)
         self.run_result = result
         self.run_exception = exception
         with Session.begin() as session:
