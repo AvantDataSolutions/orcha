@@ -18,6 +18,11 @@ orcha/tests/
     test_runner.py
   uninitialised/         # tests that orcha refuses to work before initialise()
     test_uninitialised.py
+  db/                    # backend-specific helpers in orcha.utils.sqlalchemy
+    conftest.py          # per-backend engine/session fixtures (self-gating)
+    test_mssql.py        # mssql_upsert
+    test_postgres.py     # postgres_upsert, get(), get_latest_versions()
+    test_sqlite.py       # sqlite_upsert, sqlalchemy_replace
 ```
 
 ## Key ideas
@@ -70,3 +75,42 @@ pytest orcha/tests/uninitialised
 
 If the `ORCHA_CORE_*` environment variables are not set, the DB-backed tests are
 skipped with a clear message rather than failing.
+
+## Database suite (`db`)
+
+Tests for the backend-specific helpers in `orcha.utils.sqlalchemy`
+(`mssql_upsert`, `postgres_upsert`, `sqlite_upsert`, `sqlalchemy_replace`,
+`get`, `get_latest_versions`), run against real engines. It does **not** require
+`orcha` to be initialised, and each backend gates itself:
+
+- **sqlite** always runs (an on-disk temp database, no service needed).
+- **mssql** runs when `ORCHA_MSSQL_*` are set, otherwise skips.
+- **postgres** runs when `ORCHA_CORE_*` are set (reuses the shared test
+  Postgres), otherwise skips.
+
+It is not part of the default `testpaths`, so run it explicitly:
+
+```bash
+cd orcha/tests
+docker compose up -d orcha-tests-mssql orcha-tests-db   # SQL Server + Postgres
+cd ../..
+
+# SQL Server (exposed on localhost:14330 by the compose override)
+export ORCHA_MSSQL_USER=sa
+export ORCHA_MSSQL_PASSWORD=Orcha_test_pass1
+export ORCHA_MSSQL_SERVER=localhost:14330
+export ORCHA_MSSQL_DB=orcha_test
+# Postgres (as above): ORCHA_CORE_USER/PASSWORD/SERVER/DB
+
+pytest orcha/tests/db
+```
+
+The SQL Server container (`mcr.microsoft.com/mssql/server`) needs ~2 GB RAM. The
+target database is created automatically from `master` on first run. With no env
+vars set, only the sqlite tests run and the rest skip.
+
+> One test — `test_all_columns_are_primary_key` — is an `xfail`: it documents a
+> known `mssql_upsert` bug (an all-primary-key table produces an empty
+> `MERGE ... UPDATE SET`, a syntax error). When the pending `mssql_upsert`
+> optimisation fixes it, the strict xfail will flip to a failure — remove the
+> marker at that point.

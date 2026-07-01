@@ -1,4 +1,22 @@
 services:
+  # SQL Server for the database suite (orcha/tests/db). Only the
+  # MSSQL-specific tests use it; they self-skip when the ORCHA_MSSQL_* env vars
+  # are unset, so this service is optional for the core suite.
+  orcha-tests-mssql:
+    container_name: orcha-tests-mssql
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Orcha_test_pass1"
+      MSSQL_PID: "Developer"
+    # sqlcmd ships in the image; use it to wait until the engine actually
+    # accepts logins before tests connect. -C trusts the self-signed cert.
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   orcha-tests-db:
     container_name: orcha-tests-db
     image: postgres:16-bookworm

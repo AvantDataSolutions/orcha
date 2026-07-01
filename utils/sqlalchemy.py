@@ -338,6 +338,48 @@ def sqlite_upsert(
             db.execute(stmt)
 
 
+_MSSQL_COLLATION_CACHE: dict[str, tuple[str, str]] = {}
+"""
+Cache of ``(server_collation, database_collation)`` keyed by engine URL. Both
+are static for a given server/database, so we look them up once rather than on
+every upsert.
+"""
+
+_COLLATABLE_TYPES = ('varchar', 'char', 'text', 'nchar', 'nvarchar', 'ntext')
+
+
+def _needs_collation(column_type: str) -> bool:
+    """True if the column type is a string type that carries a collation."""
+    lowered = column_type.lower()
+    return any(t in lowered for t in _COLLATABLE_TYPES)
+
+
+def _already_has_collation(column_type: str) -> bool:
+    """True if the column type string already specifies a COLLATE clause."""
+    return 'collate' in column_type.lower()
+
+
+def _mssql_collations(session, conn) -> tuple[str, str]:
+    """
+    Return ``(server_collation, database_collation)`` for the connection,
+    caching the result by engine URL (collations don't change at runtime).
+    """
+    key = str(conn.engine.url)
+    cached = _MSSQL_COLLATION_CACHE.get(key)
+    if cached is not None:
+        return cached
+    row = session.execute(sql('''
+        SELECT
+            CAST(SERVERPROPERTY('Collation') AS VARCHAR) AS ServerCollation,
+            CAST(DATABASEPROPERTYEX(:db, 'Collation') AS VARCHAR) AS DatabaseCollation;
+    ''').bindparams(db=conn.engine.url.database)).fetchone()
+    if row is None or row.ServerCollation is None or row.DatabaseCollation is None:
+        raise Exception('Failed to get server/database collation')
+    result = (row.ServerCollation, row.DatabaseCollation)
+    _MSSQL_COLLATION_CACHE[key] = result
+    return result
+
+
 def mssql_upsert(
         data: pd.DataFrame,
         s_maker: sessionmaker[Session],
@@ -399,7 +441,6 @@ def mssql_upsert(
                         length = 200
                 dtype_map[col] = NVARCHAR(length)
 
-        chunksize = kwargs.get('chunksize', CHUNK_SIZE)
         data.to_sql(
             name=temp_table,
             schema=schema_str,
@@ -410,49 +451,34 @@ def mssql_upsert(
             dtype=dtype_map
         )
 
-        # Just in case the database collation is different to server collation
-        # and then the temp table won't merge with the target table
-        # we have to fix the collation of the temp table
-        db_name = conn.engine.url.database
-        collation = session.execute(sql(f'''
-            SELECT CAST(DATABASEPROPERTYEX('{db_name}', 'Collation') AS VARCHAR) AS DatabaseCollation;
-        ''')).fetchone()
-        if collation is None or not hasattr(collation, 'DatabaseCollation'):
-            raise Exception('Failed to get database collation')
-
-        collation = collation.DatabaseCollation
-
-        def _needs_collation(column_type: str) -> bool:
-            collatable_types = ['varchar', 'char', 'text', 'nchar', 'nvarchar', 'ntext']
-            for collatable_type in collatable_types:
-                if collatable_type in column_type.lower():
-                    return True
-            return False
-
-        def _alreay_has_collation(column_type: str) -> bool:
-            if 'collate' in column_type.lower():
-                return True
-            return False
-
+        # The temp table inherits the *server* collation, so if the target
+        # database has a different collation the MERGE join on string columns
+        # would raise a collation conflict. Realign the temp table's string
+        # columns to the database collation to prevent that. When the two
+        # collations already match this is a no-op, so it's skipped entirely.
+        server_collation, collation = _mssql_collations(session, conn)
+        alter_stmts: list[str] = []
         for column in data.columns:
             column_type = str(table_inspect.columns[column].type)
-            # Mostly to handle cases where server collation != db collation
-            if _needs_collation(column_type):
-                # If the column type doesn't already have a collation, then use
-                # the database collation
-                if not _alreay_has_collation(column_type):
-                    session.execute(sql(f'''
-                        ALTER TABLE {temp_table}
-                        ALTER COLUMN [{column}] {column_type} COLLATE {collation}
-                    '''))
-                else:
-                    # otherwise we'll use whatever collation is specified in the
-                    # table column type and remove any extra "
-                    session.execute(sql(f'''
-                        ALTER TABLE {temp_table}
-                        ALTER COLUMN [{column}] {column_type.replace('"', '')}
-                    '''))
-        session.execute(sql(f'''
+            if not _needs_collation(column_type):
+                continue
+            if _already_has_collation(column_type):
+                # Use whatever collation the column type already specifies
+                # (stripping any stray quotes from the reflected type string).
+                alter_stmts.append(
+                    f'ALTER TABLE {temp_table} '
+                    f'ALTER COLUMN [{column}] {column_type.replace(chr(34), "")}'
+                )
+            elif collation != server_collation:
+                alter_stmts.append(
+                    f'ALTER TABLE {temp_table} '
+                    f'ALTER COLUMN [{column}] {column_type} COLLATE {collation}'
+                )
+        if alter_stmts:
+            # One round trip rather than one per column.
+            session.execute(sql(';\n'.join(alter_stmts)))
+
+        merge_stmt = f'''
             MERGE {schema_str}.{table.name} WITH (HOLDLOCK, UPDLOCK) AS target
             USING {temp_table} AS source
             ON (
@@ -460,10 +486,16 @@ def mssql_upsert(
             )
             WHEN NOT MATCHED BY TARGET THEN
                 INSERT ({', '.join([f'[{c}]' for c in data.columns])})
-                VALUES ({', '.join(f'source.[{c}]' for c in data.columns)})
+                VALUES ({', '.join(f'source.[{c}]' for c in data.columns)})'''
+        # Only emit WHEN MATCHED when there is something to update; a table whose
+        # columns are all part of the primary key has no non-PK columns, and an
+        # empty SET clause is a syntax error.
+        if non_pk_cols:
+            merge_stmt += f'''
             WHEN MATCHED THEN UPDATE SET
-                {', '.join(f'target.[{c}] = source.[{c}]' for c in non_pk_cols)};
-            '''))
+                {', '.join(f'target.[{c}] = source.[{c}]' for c in non_pk_cols)}'''
+        merge_stmt += ';'
+        session.execute(sql(merge_stmt))
         session.execute(sql(f'DROP TABLE {temp_table}'))
 
 

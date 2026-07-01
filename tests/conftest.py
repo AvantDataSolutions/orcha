@@ -55,11 +55,19 @@ def clock() -> FakeClock:
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip everything with a clear reason if the DB env vars are not set."""
+    """
+    Skip the Postgres-backed suites with a clear reason if the core DB env vars
+    are not set. Only the ``core`` and ``uninitialised`` suites need the shared
+    Postgres instance; the ``db`` suite gates itself per-backend (its
+    fixtures skip individually when their own env vars are unset), so it must
+    not be caught by this blanket skip.
+    """
     if not MISSING_DB_ENV:
         return
     skip = pytest.mark.skip(
         reason="Set ORCHA_CORE_USER/PASSWORD/SERVER/DB to run the DB-backed tests"
     )
+    needs_core_db = (f"{os.sep}core{os.sep}", f"{os.sep}uninitialised{os.sep}")
     for item in items:
-        item.add_marker(skip)
+        if any(part in str(item.fspath) for part in needs_core_db):
+            item.add_marker(skip)
