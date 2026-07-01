@@ -1,13 +1,15 @@
-FROM python:3.11.5-slim-bookworm
+FROM python:3.12-slim-bookworm
 
-WORKDIR /
-RUN apt update -y
+WORKDIR /app
 
-COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+# Install orcha's runtime dependencies plus the test-only extras. Build context
+# is the repo root (see docker-compose.yml) so both files are reachable.
+COPY orcha/requirements.txt /tmp/orcha-requirements.txt
+COPY orcha/tests/requirements.txt /tmp/test-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/orcha-requirements.txt -r /tmp/test-requirements.txt
 
-COPY / /orcha_tests
+ENV PYTHONUNBUFFERED=1
 
-ENV PYTHONUNBUFFERED 1
-
-ENTRYPOINT [ "python3", "-m", "unittest", "orcha_tests/tests.py", "-v" ]
+# The source is mounted at /app at runtime (see docker-compose volumes). The
+# core suite runs as its own process against an initialised database.
+ENTRYPOINT ["pytest", "orcha/tests/core"]

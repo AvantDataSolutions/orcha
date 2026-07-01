@@ -1,9 +1,4 @@
-numpy
-pandas
-bcrypt
-
-sqlalchemy >2,<3
-psycopg2-binary
-
-pydantic
-croniter
+# Test-only dependencies. Orcha's own runtime dependencies come from
+# orcha/requirements.txt (installed by the test Dockerfiles), so this file only
+# adds what the tests themselves need.
+pytest>=8,<10
