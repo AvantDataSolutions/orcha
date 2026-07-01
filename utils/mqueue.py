@@ -2,6 +2,7 @@ import hashlib
 import json
 import random
 import threading
+import uuid
 from datetime import datetime as dt
 from time import sleep
 from typing import Any, Callable, Generic, Protocol, TypeVar
@@ -624,8 +625,13 @@ class Broker():
         with Broker.session_maker.begin() as db:
             consumers = Broker.consumer_cache.get_consumers(channel)
             for c in consumers:
+                # Include a uuid4 so the id is unambiguously unique: two
+                # identical messages to the same consumer within one
+                # current_time() tick would otherwise collide on the PK and
+                # fail the whole send transaction. The id is only used as a DB
+                # key / ack correlator, never for dedup.
                 message_id = hashlib.md5(
-                    f'{channel}{c.name}{message_str}{send_time}'.encode()
+                    f'{channel}{c.name}{message_str}{send_time}{uuid.uuid4()}'.encode()
                 ).hexdigest()
                 message = MessageRecord(
                     id=message_id,
