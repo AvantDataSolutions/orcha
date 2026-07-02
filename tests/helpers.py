@@ -34,6 +34,7 @@ _TRUNCATE_TABLES = [
     ("orcha", "runs"),
     ("orcha", "schedulers"),
     ("orcha_logs", "logs"),
+    ("message_queue", "messages"),
 ]
 
 _engine: sqlalchemy.Engine | None = None

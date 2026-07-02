@@ -1,10 +1,14 @@
 """Task creation, retrieval, status transitions and due-ness logic."""
 from __future__ import annotations
 
+from datetime import datetime as dt
+
 import pytest
 
 from orcha.core import tasks
-from orcha.core.tasks import TaskItem
+from orcha.core.tasks import RunItem, TaskItem
+
+SINCE = dt(2020, 1, 1)
 
 
 def test_no_tasks_on_empty_db():
@@ -69,3 +73,30 @@ def test_disabled_task_does_not_schedule(make_task):
     task.set_status("disabled", "disable for test")
     run = task.schedule_run(schedule_by_id="test", schedule=task.schedule_sets[0])
     assert run is None
+
+
+def test_delete_from_db_removes_task_and_its_runs(make_task):
+    # delete_from_db issues two DELETEs (tasks + runs) in one transaction; this
+    # verifies both statements actually run, not just the first.
+    task = make_task(idk="del_task")
+    run = task.schedule_run(schedule_by_id="test", schedule=task.schedule_sets[0])
+    assert run is not None
+    # Pass the TaskItem itself so the run lookup doesn't re-resolve the task by
+    # id from the DB -- it won't exist there once the task has been deleted.
+    assert len(RunItem.get_all(task=task, since=SINCE)) == 1
+
+    # A task must be disabled before it can be deleted.
+    task.set_status("disabled", "disable before delete")
+    task.delete_from_db()
+
+    assert TaskItem.get("del_task") is None
+    assert RunItem.get_all(task=task, since=SINCE) == []
+
+
+def test_delete_from_db_refuses_enabled_task(make_task):
+    task = make_task(idk="enabled_del_task")
+    assert task.status == "enabled"
+    with pytest.raises(Exception):
+        task.delete_from_db()
+    # Still present since the delete was refused.
+    assert TaskItem.get("enabled_del_task") is not None

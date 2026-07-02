@@ -602,6 +602,21 @@ class Broker():
 
 
     @staticmethod
+    def _generate_message_id(
+            channel: str, consumer_name: str, message: str, send_time: dt
+        ) -> str:
+        """
+        Builds the primary-key id for a queued message. A uuid4 is included so
+        the id is unambiguously unique: two identical messages to the same
+        consumer within one current_time() tick would otherwise collide on the
+        PK and fail the whole send transaction. The id is only used as a DB key
+        / ack correlator, never for dedup, so the extra entropy is safe.
+        """
+        return hashlib.md5(
+            f'{channel}{consumer_name}{message}{send_time}{uuid.uuid4()}'.encode()
+        ).hexdigest()
+
+    @staticmethod
     @_fastapi_app.post('/send-message')
     def send_message(data: SendMessageInput):
         """
@@ -625,14 +640,9 @@ class Broker():
         with Broker.session_maker.begin() as db:
             consumers = Broker.consumer_cache.get_consumers(channel)
             for c in consumers:
-                # Include a uuid4 so the id is unambiguously unique: two
-                # identical messages to the same consumer within one
-                # current_time() tick would otherwise collide on the PK and
-                # fail the whole send transaction. The id is only used as a DB
-                # key / ack correlator, never for dedup.
-                message_id = hashlib.md5(
-                    f'{channel}{c.name}{message_str}{send_time}{uuid.uuid4()}'.encode()
-                ).hexdigest()
+                message_id = Broker._generate_message_id(
+                    channel, c.name, message_str, send_time
+                )
                 message = MessageRecord(
                     id=message_id,
                     created_at=send_time,

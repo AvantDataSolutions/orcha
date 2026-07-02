@@ -12,9 +12,19 @@ from __future__ import annotations
 from datetime import datetime as dt
 from datetime import timedelta as td
 
+import pytest
+
+from orcha.core.scheduler import OrchaSchedulerConfig, Scheduler
 from orcha.core.tasks import RunItem, TaskItem
 
 SINCE = dt(2020, 1, 1)
+
+
+def _stop(sched: Scheduler) -> None:
+    """Stop a directly-constructed scheduler's background thread(s)."""
+    if sched.last_active_thread is not None:
+        sched.last_active_thread.stop()
+    sched.stop()
 
 
 def _run_count(task) -> int:
@@ -122,3 +132,32 @@ def test_fail_historical_marks_old_run_failed(scheduler, make_task, clock, sent_
     assert reloaded.status == "failed"
     assert reloaded.progress == "complete"
     assert any(channel == "scheduler_historical_run" for channel, _ in sent_messages)
+
+
+def test_deprecated_fail_unstarted_runs_warns_and_still_applies():
+    # The deprecated kwarg must warn (not raise) and its value must still take
+    # effect, overriding the config default of True.
+    with pytest.warns(DeprecationWarning, match="fail_unstarted_runs"):
+        sched = Scheduler(config=OrchaSchedulerConfig(), fail_unstarted_runs=False)
+    try:
+        assert sched.fail_unstarted_runs is False
+    finally:
+        _stop(sched)
+
+
+def test_deprecated_disable_stale_tasks_warns_and_still_applies():
+    with pytest.warns(DeprecationWarning, match="disable_stale_tasks"):
+        sched = Scheduler(config=OrchaSchedulerConfig(), disable_stale_tasks=False)
+    try:
+        assert sched.disable_stale_tasks is False
+    finally:
+        _stop(sched)
+
+
+def test_no_deprecation_warning_on_supported_config_path(recwarn):
+    # The supported path (config only) must not emit the deprecation warning.
+    sched = Scheduler(config=OrchaSchedulerConfig())
+    try:
+        assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+    finally:
+        _stop(sched)
