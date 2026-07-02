@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from croniter import croniter
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import text as sql
 
 from orcha import current_time
@@ -950,7 +951,20 @@ class RunItem():
             output = None
         )
 
-        item._update_db(ignore_updated_check=True)
+        try:
+            item._update_db(ignore_updated_check=True)
+        except IntegrityError:
+            # Another scheduler already produced this scheduled slot (the partial
+            # unique index on task_idf, set_idf, scheduled_time WHERE
+            # run_type='scheduled'). Return the run that won the race rather than
+            # crashing this scheduler's tick.
+            if run_type == 'scheduled' and schedule is not None:
+                existing = RunItem.get_latest(
+                    task=task, schedule=schedule, run_type=run_type
+                )
+                if existing is not None and existing.scheduled_time == scheduled_time:
+                    return existing
+            raise
         return item
 
     @staticmethod
@@ -1024,6 +1038,55 @@ class RunItem():
             status='unstarted',
             progress='queued'
         )
+
+    @staticmethod
+    def claim_next_queued(task: str | TaskItem) -> RunItem | None:
+        """
+        Atomically claim the oldest pending (unstarted+queued) run for a task,
+        transitioning it to status='pending', progress='running' in a single
+        statement, and return it (or None if nothing is queued).
+
+        Uses ``SELECT ... FOR UPDATE SKIP LOCKED`` so that when multiple runners
+        process the same task, each run is handed to exactly one runner: a runner
+        skips any row another runner is mid-claim on rather than blocking on it or
+        double-executing it. The state transition is persisted as part of the
+        claim, so the ownership is durable (not just a held row lock).
+
+        ``start_time`` is stamped here (this is when execution begins) because the
+        subsequent ``set_progress('running')`` in the runner is now a no-op -- the
+        claim has already moved the run to running.
+        """
+        confirm_initialised()
+        task = RunItem._task_id_populate(task)
+        claim_time = current_time()
+        with session_maker.begin() as session:
+            record = session.execute(sql('''
+                UPDATE orcha.runs
+                SET status = :pending,
+                    progress = :running,
+                    start_time = :claim_time,
+                    update_timestamp = :claim_time
+                WHERE run_idk = (
+                    SELECT run_idk FROM orcha.runs
+                    WHERE task_idf = :task_idf
+                        AND status = :unstarted
+                        AND progress = :queued
+                    ORDER BY scheduled_time ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                RETURNING *
+            '''), {
+                'task_idf': task.task_idk,
+                'claim_time': claim_time,
+                'unstarted': RunStatusEnum.unstarted.value,
+                'pending': RunStatusEnum.pending.value,
+                'queued': RunProgressEnum.queued.value,
+                'running': RunProgressEnum.running.value,
+            }).fetchone()
+        if record is None:
+            return None
+        return RunItem._from_record(record, task)
 
     @staticmethod
     def get_running_runs(
@@ -1196,7 +1259,9 @@ class RunItem():
                     'output': str(self.output)
                 }
             )
-            if isinstance(e, VersionMismatchException):
+            if isinstance(e, (VersionMismatchException, IntegrityError)):
+                # Let IntegrityError through unwrapped so callers (e.g. the
+                # scheduled-run slot unique constraint) can detect and handle it.
                 raise e
             else:
                 raise Exception(f'Error updating run in database: {e}') from e

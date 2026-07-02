@@ -31,6 +31,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON as PG_JSON
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -97,6 +98,16 @@ runs = Table(
         'task_idf', 'scheduled_time', 'set_idf', 'run_type',
     ),
     Index('idx_orcha_runs_taskidf_status_progress', 'task_idf', 'status', 'progress'),
+    # At most one scheduled run per (task, schedule set, scheduled slot). This
+    # stops two schedulers from double-producing the same due run: the second
+    # INSERT hits this partial unique index and is handled as "already produced".
+    # Partial (run_type='scheduled') so manual/triggered/retry runs are unaffected.
+    Index(
+        'uq_orcha_runs_scheduled_slot',
+        'task_idf', 'set_idf', 'scheduled_time',
+        unique=True,
+        postgresql_where=text("run_type = 'scheduled'"),
+    ),
     schema=ORCHA_SCHEMA,
 )
 

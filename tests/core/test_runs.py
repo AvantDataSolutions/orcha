@@ -104,9 +104,40 @@ def test_get_all_rejects_foreign_schedule(make_task, clock):
         RunItem.get_all(task=task.task_idk, schedule=stray, since=SINCE)
 
 
+def test_duplicate_scheduled_slot_collapses_to_one_run(make_task, clock):
+    # Two schedulers deciding the same slot is due must not double-produce the
+    # run. Creating the same (task, schedule, scheduled_time) twice returns the
+    # run that won the race rather than a second row.
+    task = make_task(idk="dup_slot")
+    run1 = _schedule(task)
+    run2 = _schedule(task)  # same frozen clock -> same slot
+    assert run1 is not None and run2 is not None
+    assert run1.run_idk == run2.run_idk
+    assert len(RunItem.get_all(task=task.task_idk, since=SINCE)) == 1
+
+
+def test_claim_next_queued_transitions_and_is_exclusive(make_task, clock):
+    # The atomic claim transitions a queued run to running and hands it out once.
+    task = make_task(idk="claim_task")
+    _schedule(task)
+
+    claimed = RunItem.claim_next_queued(task)
+    assert claimed is not None
+    assert claimed.status == "pending"
+    assert claimed.progress == "running"
+    assert claimed.start_time is not None
+
+    # The run is no longer queued, so a second claim gets nothing (it is not
+    # handed out twice).
+    assert RunItem.claim_next_queued(task) is None
+
+
 def test_prune_runs_removes_all_and_makes_due(make_task, clock):
     task = make_task(idk="prune_task")
+    # Two runs in two distinct scheduled slots. (A single slot would collapse to
+    # one row under the scheduled-run unique constraint.)
     _schedule(task)
+    clock.advance(td(minutes=1))
     _schedule(task)
     assert len(RunItem.get_all(task=task.task_idk, since=SINCE)) == 2
 

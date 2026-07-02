@@ -11,7 +11,7 @@ from orcha import current_time
 from orcha.core import monitors, tables
 from orcha.core.database import Base, session_maker
 from orcha.core.monitors import AlertBase, AlertOutputType, MonitorBase
-from orcha.core.tasks import TaskItem
+from orcha.core.tasks import RunItem, TaskItem, VersionMismatchException
 from orcha.core.thread_monitor import ManagedThread
 from orcha.utils.log import LogManager
 from orcha.utils.mqueue import Channel, Message, Producer
@@ -300,6 +300,7 @@ class OrchaSchedulerConfig:
         This class is used to store the configuration for the orcha scheduler.
 
         ### Options
+        - scheduler_idk(str = 'main'): The identity of this scheduler. Each running scheduler must use a distinct id so they don't clobber each other's row in the schedulers table. Defaults to 'main' for the single-scheduler baseline.
         - task_refresh_interval(float = 30): The interval in seconds at which the scheduler will reload the task list from the database.
         - fail_unstarted_runs(bool = True): If True, then when a run is due, but the last run didn't start, then the last run will be set to failed before a new run is created.
         - disable_stale_tasks(bool = True): If True, then when a task hasn't been active since the last run, then the task will be set to inactive.
@@ -310,6 +311,7 @@ class OrchaSchedulerConfig:
         - fail_historical_age(td | None = td(hours=6)): The age at which an unstarted run should be failed.
         - fail_historical_interval(float = 180): The interval in seconds at which the scheduler will check.
         """
+        scheduler_idk: str = 'main'
         task_refresh_interval: float = 30
         fail_unstarted_runs: bool = True
         disable_stale_tasks: bool = True
@@ -349,7 +351,7 @@ class Scheduler:
         """
         self.all_tasks = []
 
-        self.scheduler_idk = 'main'
+        self.scheduler_idk = config.scheduler_idk
 
         # Bind the scheduler to the monitors
         for monitor in (monitors or []):
@@ -403,9 +405,7 @@ class Scheduler:
         )
         self.last_active_thread.start()
 
-        # TODO Move to using scheduler_idks as if we run multiple schedulers
-        # we'll only record when the latest one started
-        Scheduler.set_loaded_at()
+        Scheduler.set_loaded_at(self.scheduler_idk)
         scheduler_log.add_entry(
             actor='scheduler', category='status', text='Scheduler Initialised', json={
                 'scheduler_idk': self.scheduler_idk
@@ -418,9 +418,8 @@ class Scheduler:
         Set the loaded_at time for the scheduler in the database.
         """
         with session_maker.begin() as session:
-            # Using a single scheduler for now
             session.merge(
-                SchedulerRecord(scheduler_idk='main', loaded_at=current_time())
+                SchedulerRecord(scheduler_idk=scheduler_idk, loaded_at=current_time())
             )
 
     @staticmethod
@@ -462,7 +461,7 @@ class Scheduler:
         # If the scheduler hasn't been run/no last active
         # then we don't want to send a message - mostly to avoid
         # sending a message on the first run and at startup
-        last_active = self.get_last_active()
+        last_active = self.get_last_active(self.scheduler_idk)
         if last_active is not None:
             # if it's over 10 minutes since the last active time
             # then assume roughly 5 alerts have been sent and stop
@@ -481,9 +480,8 @@ class Scheduler:
         Update the last_active time for the scheduler in the database.
         """
         with session_maker.begin() as session:
-            # Using a single scheduler for now
             session.merge(
-                SchedulerRecord(scheduler_idk='main', last_active=current_time())
+                SchedulerRecord(scheduler_idk=self.scheduler_idk, last_active=current_time())
             )
             self.last_refresh = current_time()
 
@@ -698,6 +696,37 @@ class Scheduler:
             json={'task_count': len(self.all_tasks)}
         )
 
+    def _supersede_pending_runs(self, task: TaskItem, schedule) -> None:
+        """
+        Fail any still-pending (unstarted+queued) run for this task/schedule so
+        that a newer scheduled run can take its place (the single-pending-run
+        policy). Each superseded run is recorded as a failure (with an alert, so
+        it counts toward FailedRunsMonitor's disable-after-N path).
+
+        Only runs that are genuinely still unstarted+queued are failed: if a
+        runner has just claimed a run (moving it to running), the optimistic
+        version check raises and we skip it -- we never fail a run a runner is
+        already executing.
+        """
+        for pending in RunItem.get_all_queued(task=task, schedule=schedule):
+            try:
+                pending.set_status(
+                    status='failed',
+                    output={'message': 'superseded by newer scheduled run'},
+                    send_alert=True,
+                )
+                # Mark it complete (as the historical-fail path does) so the run
+                # doesn't linger as 'failed' but still 'queued'. zero_duration
+                # keeps its (never-started) duration at zero.
+                pending.set_progress(
+                    progress='complete',
+                    zero_duration=True,
+                )
+            except VersionMismatchException:
+                # The run was claimed by a runner between our read and write, so
+                # it is no longer pending; leave it for the runner to complete.
+                continue
+
     def _tick_process_schedules(self):
         """
         One iteration of the main scheduling loop: update the scheduler's active
@@ -729,9 +758,6 @@ class Scheduler:
             for schedule in task.schedule_sets:
                 is_due, last_run = task.is_run_due_with_last(schedule)
                 if is_due:
-                    # TODO Check for old queued/running runs and set them to failed
-                    # No longer failing runs that are queued and relying on
-                    # the historical run failure to do the work
                     if self.disable_stale_tasks and last_run is not None:
                         # If the task hasn't been active since the last run,
                         # then it's stale and should be disabled.
@@ -747,6 +773,13 @@ class Scheduler:
                                 )
                             )
                             continue
+                    # Single-pending-run policy: a schedule should have at most
+                    # one pending (unstarted+queued) run. Before creating the new
+                    # run, supersede any prior pending run for this schedule by
+                    # failing it. Repeated supersessions then legitimately trip
+                    # FailedRunsMonitor's disable-after-N path, surfacing a task
+                    # that never gets picked up as an error.
+                    self._supersede_pending_runs(task, schedule)
                     # print('Run due for task:', task.task_idk)
                     run = task.schedule_run(
                         schedule=schedule,

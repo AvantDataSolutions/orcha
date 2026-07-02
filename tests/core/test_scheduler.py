@@ -161,3 +161,59 @@ def test_no_deprecation_warning_on_supported_config_path(recwarn):
         assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
     finally:
         _stop(sched)
+
+
+def test_scheduler_identity_is_configurable():
+    # A scheduler records its liveness under its own configured id, not a
+    # hardcoded 'main', so multiple schedulers don't clobber each other's row.
+    sched = Scheduler(config=OrchaSchedulerConfig(scheduler_idk="sched_b"))
+    try:
+        assert sched.scheduler_idk == "sched_b"
+        assert Scheduler.get_loaded_at("sched_b") is not None
+        assert Scheduler.get_loaded_at("main") is None
+    finally:
+        _stop(sched)
+
+
+def test_supersedes_prior_pending_run_and_alerts(scheduler, make_task, clock, sent_messages):
+    # A schedule that never gets picked up must keep at most one pending run:
+    # when the next slot is due, the prior pending run is failed (superseded).
+    clock.set(dt(2026, 1, 1, 0, 0, 30))
+    task = make_task(idk="supersede_task")
+    scheduler.all_tasks = [task]
+
+    scheduler._tick_process_schedules()  # slot 00:00 -> one pending run
+    first = RunItem.get_all(task=task.task_idk, since=SINCE)
+    assert len(first) == 1
+    first_run = first[0]
+    assert first_run.status == "unstarted"
+
+    # Next slot due while the prior run is still pending.
+    clock.set(dt(2026, 1, 1, 0, 1, 30))
+    scheduler._tick_process_schedules()
+
+    runs = RunItem.get_all(task=task.task_idk, since=SINCE)
+    assert len(runs) == 2  # the new run was created
+
+    superseded = RunItem.get(run_id=first_run.run_idk, task=task)
+    assert superseded is not None
+    assert superseded.status == "failed"
+    assert superseded.progress == "complete"
+    assert superseded.output.get("message") == "superseded by newer scheduled run"
+    # The supersession emits a run_failed alert so it counts toward
+    # FailedRunsMonitor's disable-after-N path.
+    assert any(ch == "run_failed" for ch, _ in sent_messages)
+
+
+def test_only_one_pending_run_accumulates_over_many_slots(scheduler, make_task, clock):
+    # Ticking across several slots without any runner never leaves more than one
+    # pending run at a time (each new slot supersedes the previous pending one).
+    clock.set(dt(2026, 1, 1, 0, 0, 30))
+    task = make_task(idk="accumulate_task")
+    scheduler.all_tasks = [task]
+
+    for minute in range(4):
+        clock.set(dt(2026, 1, 1, 0, minute, 30))
+        scheduler._tick_process_schedules()
+        pending = RunItem.get_all_queued(task=task.task_idk)
+        assert len(pending) == 1

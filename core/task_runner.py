@@ -314,11 +314,12 @@ class ThreadHandler():
             # Once all updates are done, the run is complete
             run.set_progress('complete')
 
-        # Because we have multiple schedules for a task we need
-        # to get all the runs that are queued and run them because
-        # some schedules will have runs queued at the same time
-        queued_runs = task.get_queued_runs()
-        for run in queued_runs:
+        # Because we have multiple schedules for a task we need to run all the
+        # runs that are queued because some schedules will have runs queued at
+        # the same time. Each run is claimed atomically (SELECT ... FOR UPDATE
+        # SKIP LOCKED + state transition) so that if more than one runner is
+        # processing this task, a given run is executed by exactly one of them.
+        while (run := RunItem.claim_next_queued(task)) is not None:
             runner_log.add_entry(
                 actor='main_loop', category='processing_run',
                 text='Processing run',
