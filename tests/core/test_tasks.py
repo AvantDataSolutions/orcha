@@ -93,6 +93,23 @@ def test_delete_from_db_removes_task_and_its_runs(make_task):
     assert RunItem.get_all(task=task, since=SINCE) == []
 
 
+def test_duplicate_cron_schedules_are_rejected(make_task):
+    # Two schedule sets with the same cron would collapse to one set_idk and
+    # misattribute runs, so create must reject them with a clear error.
+    with pytest.raises(ValueError, match="duplicate cron"):
+        make_task(idk="dup_cron", crons=("* * * * *", "* * * * *"))
+    # Nothing should have been persisted.
+    assert TaskItem.get("dup_cron") is None
+
+
+def test_distinct_cron_schedules_keep_expected_set_idks(make_task):
+    # The single-cron path (and multi-distinct-cron path) is unaffected and keeps
+    # the documented task_idk + cron set_idk.
+    task = make_task(idk="multi_cron", crons=("* * * * *", "*/5 * * * *"))
+    set_idks = {s.set_idk for s in task.schedule_sets}
+    assert set_idks == {"multi_cron_* * * * *", "multi_cron_*/5 * * * *"}
+
+
 def test_delete_from_db_refuses_enabled_task(make_task):
     task = make_task(idk="enabled_del_task")
     assert task.status == "enabled"

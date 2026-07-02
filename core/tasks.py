@@ -385,6 +385,21 @@ class TaskItem():
 
         version = current_time()
         current_task = TaskItem.get(task_idk)
+
+        # set_idk is derived from task_idk + cron_schedule, so two schedule sets
+        # with the same cron on one task would collapse to a single id (later
+        # config silently wins and runs get misattributed). Reject it: two
+        # schedules with the same cron on the same task are almost certainly a
+        # mistake.
+        crons = [schedule.cron_schedule for schedule in schedule_sets]
+        duplicate_crons = sorted({c for c in crons if crons.count(c) > 1})
+        if duplicate_crons:
+            raise ValueError(
+                f"Task '{task_idk}' has duplicate cron schedule(s): "
+                f"{duplicate_crons}. Each schedule set on a task must use a "
+                "distinct cron schedule."
+            )
+
         new_s_sets: list[ScheduleSet] = []
         for schedule in schedule_sets:
             # set the set_idk as task_id+cron_schedule
