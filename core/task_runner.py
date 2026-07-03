@@ -202,9 +202,7 @@ class ThreadHandler():
                 self.update_active_all_tasks()
                 # If the run has been cancelled then we need to stop the thread
                 if run.status == 'cancelled':
-                    orcha_threading.expire_timeout(
-                        threading.current_thread().name
-                    )
+                    orcha_threading.expire_timeout(run.run_idk)
             # remove the run from the running dict to avoid
             # long running threads from taking up memory
             running_dict.pop(run.run_idk, None)
@@ -244,7 +242,7 @@ class ThreadHandler():
                 # this is to allow for manual runs to have different configs
                 task.task_function(task, run, run.config)
             except Exception as e:
-                orcha_threading.store_exception(e)
+                orcha_threading.store_exception(e, token=run.run_idk)
 
             running_dict[run.run_idk] = False
             # Join the helper thread to make sure it finishes
@@ -270,7 +268,7 @@ class ThreadHandler():
             # otherwise it's already been set as failed, warn, etc and
             # we need to leave it in that state
             thread_exception = orcha_threading.get_exception(
-                threading.current_thread(),
+                token=run.run_idk,
                 and_clear_exception=False
             )
             # If we had an exception in the thread then raise it
@@ -332,6 +330,7 @@ class ThreadHandler():
                     orcha_threading.run_function_with_timeout(
                         timeout=timeout,
                         message=f'Task {task.name} with run_id {run.run_idk} timed out (timeout: {timeout}s)',
+                        token=run.run_idk,
                         thread_name=threading.current_thread().name,
                         func=_run_wrapper,
                         run=run,
@@ -339,6 +338,7 @@ class ThreadHandler():
                 else:
                     _run_wrapper(run)
             except Exception as e:
+                is_timeout = isinstance(e, orcha_threading.TaskTimeoutException)
                 # Being safe and adding a reload to make sure we have the latest run
                 run.reload()
                 # The run may often be cancelled here so we don't want to raise
@@ -349,6 +349,12 @@ class ThreadHandler():
                     raise_on_backwards=False
                 )
                 run.set_progress('complete')
+                if is_timeout:
+                    # The worker thread timed out and cannot be forcibly stopped.
+                    # Now that the run has been failed and completed, fence it so
+                    # any late writes from the abandoned thread (which shares this
+                    # run object) are dropped rather than mutating a finished run.
+                    run.fence()
                 # if the run raised an exception then clean up the idk from the running_dict
                 running_dict.pop(run.run_idk, None)
                 continue

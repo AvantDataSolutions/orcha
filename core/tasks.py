@@ -844,6 +844,10 @@ class RunItem():
     status: RunStatus
     progress: RunProgress
     output: dict | None = None
+    # Runtime-only flag (not a DB column): once set, writes from this run object
+    # are dropped. Set when a run times out so the abandoned worker thread -- which
+    # shares this object and can't be stopped -- can't mutate an already-failed run.
+    _is_fenced: bool = False
 
     @staticmethod
     def _task_id_populate(task: str | TaskItem) -> TaskItem:
@@ -1169,10 +1173,24 @@ class RunItem():
         """
         Used to reload the run from the database to get the latest data.
         """
+        if self._is_fenced:
+            # A fenced run is being abandoned; don't refresh it (and don't fail
+            # if it has since been deleted). This also keeps the fence set.
+            return
         db_data = RunItem.get(self.run_idk, task=self._task)
         if db_data is None:
             raise Exception('Run not found in database')
         self.__dict__.update(db_data.__dict__)
+
+    def fence(self) -> None:
+        """
+        Mark this run object as fenced so that any further ``_update_db`` writes
+        it makes are dropped. Used when a run times out: the worker thread cannot
+        be forcibly stopped, so once the run has been failed we fence it to stop
+        the abandoned thread (which shares this run object) from writing to a run
+        that is already done.
+        """
+        self._is_fenced = True
 
     def delete(self) -> None:
         """
@@ -1186,6 +1204,20 @@ class RunItem():
             '''), {'run_idk': self.run_idk})
 
     def _update_db(self, ignore_updated_check: bool = False):
+        if self._is_fenced:
+            # The run has been fenced (it timed out and was failed); drop writes
+            # from this abandoned run object rather than letting a thread that
+            # couldn't be stopped mutate an already-completed run.
+            _tasks_log.add_entry(
+                actor='run_item', category='database',
+                text='dropping write to fenced run',
+                json={
+                    'run_idk': self.run_idk,
+                    'status': self.status,
+                    'progress': self.progress,
+                }
+            )
+            return
         try:
             with session_maker.begin() as session:
                 # TODO potential code for detecting concurrent updates
@@ -1270,6 +1302,9 @@ class RunItem():
         """
         Updates the last active time for the run to the current time.
         """
+        if self._is_fenced:
+            # Fenced (abandoned after timeout): drop this write like _update_db.
+            return
         # We're directly updating the database here as all that is being
         # updated is the last_active time which is purely a change to this
         # one column and nothing else; don't need to reload the run as

@@ -12,6 +12,8 @@ them (and keeping each test's assertions close to a small, named function).
 """
 from __future__ import annotations
 
+import threading
+
 from datetime import datetime as dt
 
 import pandas as pd
@@ -22,6 +24,10 @@ from orcha.core.tasks import RunItem
 
 SINCE = dt(2020, 1, 1)
 
+# Lets the timeout test release its (deliberately blocking) task function once it
+# has asserted, so the abandoned worker doesn't linger for its whole sleep.
+_timeout_task_release = threading.Event()
+
 
 # --- module-level task functions ---------------------------------------------
 
@@ -31,6 +37,12 @@ def output_hello(task_item, run_item, cfg):
 
 def raise_boom(task_item, run_item, cfg):
     raise RuntimeError("boom")
+
+
+def blocking_task(task_item, run_item, cfg):
+    # Blocks past the run's (short) timeout so the runner has to abandon it.
+    # Released by the test once it has asserted, to keep the thread from lingering.
+    _timeout_task_release.wait(timeout=30)
 
 
 def module_source_task(task_item, run_item, cfg):
@@ -96,6 +108,24 @@ def test_runner_marks_failure_on_exception(make_task, clock):
     run = _process(task)
     assert run.status == "failed"
     assert run.progress == "complete"
+
+
+def test_runner_times_out_and_marks_failed(make_task, clock):
+    # A task that exceeds its timeout must not hang the runner: it is failed and
+    # completed rather than occupying the runner indefinitely.
+    _timeout_task_release.clear()
+    task = make_task(
+        idk="runner_timeout",
+        func=blocking_task,
+        configs={"* * * * *": {"timeout": 1}},
+    )
+    try:
+        run = _process(task)
+        assert run.status == "failed"
+        assert run.progress == "complete"
+    finally:
+        # Release the abandoned worker so it doesn't sit blocked for 30s.
+        _timeout_task_release.set()
 
 
 def test_runner_runs_module_source(make_task, clock):
