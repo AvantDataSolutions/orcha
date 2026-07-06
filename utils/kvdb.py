@@ -144,7 +144,7 @@ def store(
         storage_type: Literal['postgres', 'local', 'global', 'file'],
         key: str, value: Any,
         thread_name: str | None = None,
-        expiry: td = dt(year=9000, month=1, day=1) - dt.now(),
+        expiry: td | None = dt(year=9000, month=1, day=1) - dt.now(),
         encryption_key: str | None = None,
     ):
     """
@@ -192,7 +192,7 @@ def store(
                 key=key,
                 value=_encr_data(data) if encryption_key else data,
                 type=type(value).__name__,
-                expiry=(dt.now() + expiry),
+                expiry=(dt.now() + expiry) if expiry else None,
                 salt=salt if encryption_key else None
             )
             tx.merge(item)
