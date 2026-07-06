@@ -39,6 +39,8 @@ class ModuleConfig():
     - notebook_mode(bool): If true, this will print exceptions rather than
     - kvdb_local_fallback(bool): If true, will attempt to fall back to
         local kvdb storage when postgres is not available.
+    - log_to_console(bool): If true, will print log entries to the console
+        instead of sending them to the database.
     raising them *where possible*. This is intended for use in notebooks
     where only partial credentials are provided for using a few modules
     and the rest of the modules are not intended to be run and therefore
@@ -50,6 +52,7 @@ class ModuleConfig():
     retry_interval: int = 10
     notebook_mode: bool = False
     kvdb_local_fallback: bool = False
+    log_to_console: bool = False
 
 
 GLOBAL_MODULE_CONFIG: ModuleConfig = ModuleConfig()
@@ -245,9 +248,7 @@ class DatabaseEntity(EntityBase):
         with self.sessionmaker.begin() as db:
             result = db.execute(sql(query).bindparams(**bindparams))
             if return_values:
-                return pd.DataFrame(
-                    [list(map(str, row)) for row in result.all()]
-                )
+                return pd.DataFrame(result.mappings().all())
             else:
                 return None
 

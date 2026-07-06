@@ -40,6 +40,10 @@ class LogManager:
     def add_entry(self, actor: str, category: str, text: str, json: dict):
         """
         Add a new log entry to the database.
+
+        If `GLOBAL_MODULE_CONFIG.log_to_console` is set, the entry is printed
+        to the console instead of being written to the database. This is useful
+        when no database is attached/available (e.g. dev or notebook usage).
         ### Parameters:
         - `actor`: The actor that performed the action.
         - `category`: The category of the log entry.
@@ -48,6 +52,17 @@ class LogManager:
         ### Returns:
         Nothing
         """
+        # Imported here to avoid a circular import at module load time
+        # (module_base imports LogManager from this module).
+        from orcha.core import module_base
+        if module_base.GLOBAL_MODULE_CONFIG.log_to_console:
+            created = dt.now(UTC).isoformat()
+            print(
+                f'[{created}] [{self.source}] [{category}] '
+                f'({actor}) {text}'
+                + (f' | {json}' if json else '')
+            )
+            return
         with session_maker.begin() as db:
             # Using add for performance, we never update/merge
             # old log entries
