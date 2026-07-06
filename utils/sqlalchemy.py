@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Index,
     MetaData,
+    String,
     Table,
     create_engine,
     delete,
@@ -425,21 +426,28 @@ def mssql_upsert(
 
         dtype_map = {}
         for col in data.columns:
-            # treat object/string dtypes as text; pick length from table definition if available,
-            # otherwise use the max length observed in the data (or 200 as a safe default)
+            # treat object/string dtypes as text
             if data[col].dtype == object or str(data[col].dtype).startswith('string'):
                 try:
                     col_def = table_inspect.columns[col]
-                    length = getattr(col_def.type, 'length', None)
                 except Exception:
-                    length = None
-                if length is None or length <= 0:
+                    col_def = None
+                if col_def is not None and isinstance(col_def.type, String):
+                    # Honor the table's declared length. A length of None means
+                    # VARCHAR/NVARCHAR(MAX); preserve it (NVARCHAR(None) renders as
+                    # NVARCHAR(max)) rather than collapsing it to a finite,
+                    # truncating length.
+                    dtype_map[col] = NVARCHAR(col_def.type.length)
+                else:
+                    # Not a declared string column (e.g. an extra column in the data,
+                    # or a non-string type): size from the max length observed in the
+                    # data (capped at 4000, or 200 as a safe default).
                     try:
                         sample_max = int(data[col].astype(str).str.len().max())
                         length = max(1, min(4000, sample_max or 200))
                     except Exception:
                         length = 200
-                dtype_map[col] = NVARCHAR(length)
+                    dtype_map[col] = NVARCHAR(length)
 
         data.to_sql(
             name=temp_table,
@@ -459,7 +467,10 @@ def mssql_upsert(
         server_collation, collation = _mssql_collations(session, conn)
         alter_stmts: list[str] = []
         for column in data.columns:
-            column_type = str(table_inspect.columns[column].type)
+            # Compile against the MSSQL dialect so MAX and length survive; a plain
+            # str() renders a MAX column as bare 'VARCHAR', which SQL Server treats
+            # as VARCHAR(1) and would silently truncate the temp column to 1 char.
+            column_type = str(table_inspect.columns[column].type.compile(dialect=conn.dialect))
             if not _needs_collation(column_type):
                 continue
             if _already_has_collation(column_type):
