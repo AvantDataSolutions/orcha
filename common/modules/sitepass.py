@@ -713,6 +713,24 @@ class SitepassTeamMemberWorkflowStepSource(RestSource[_SitepassWorkflowPathLooku
         )
 
 
+class SitepassContractorsSource(RestSource):
+    def __init__(
+            self,
+            module_idk: str,
+            description: str,
+            api_entity: SitepassApiEntity,
+        ):
+        super().__init__(
+            module_idk=module_idk,
+            description=description,
+            data_entity=api_entity,
+            sub_path='contractors',
+            query_params={'limit': '1000'},
+            request_type='GET',
+            postprocess=lambda response: pd.DataFrame(response.json()['data'])
+    )
+
+
 def _get_worker_workflow_step(
         response: requests.Response,
         output_folder: str | None = None
